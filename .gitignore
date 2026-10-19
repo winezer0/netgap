@@ -31,3 +31,6 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+/.idea
+/cmd/netgapgui/frontend/node_modules
+/cmd/netgapgui/build/bin
