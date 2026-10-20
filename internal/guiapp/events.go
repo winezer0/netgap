@@ -6,9 +6,17 @@ import (
 	"time"
 
 	logging "github.com/winezer0/zaplogs"
+	"netgap/internal/monitor"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+// Health updates bypass State(), which also performs permission checks.
+func (s *Service) emitHealth(health monitor.Health) {
+	if s.ctx != nil {
+		runtime.EventsEmit(s.ctx, eventHealthName, health)
+	}
+}
 
 // emitState 向前端推送当前状态。
 func (s *Service) emitState() {

@@ -105,7 +105,7 @@ func TestSnapshotRejectsChangedNetworkAndUnsavedDelete(t *testing.T) {
 		t.Fatal("deleted despite changed network")
 	}
 	f.bindingFailure = false
-	if err := saveSnapshot(file, &routeSnapshot{Version: 2, SavedAt: time.Now(), Routes: fakeRoutes()}); err != nil {
+	if err := saveSnapshot(file, &routeSnapshot{Version: snapshotVersion, SavedAt: time.Now(), Routes: fakeRoutes()}); err != nil {
 		t.Fatal(err)
 	}
 	f.bindingFailure = true

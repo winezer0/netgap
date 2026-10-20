@@ -1,8 +1,9 @@
-//go:build !windows && !linux
+//go:build !windows && !linux && !darwin
 
 package detector
 
-func getProxyFromSystem() *ProxyConfig {
+import "context"
+
+func getProxyFromSystem(context.Context) *ProxyConfig {
 	return nil
 }
-

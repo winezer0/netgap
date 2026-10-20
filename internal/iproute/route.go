@@ -71,7 +71,7 @@ func GetDefaultRoute() (*RouteInfo, error) {
 	if runtime.GOOS == "windows" {
 		return getWindowsDefaultRoute()
 	} else {
-		return getLinuxDefaultRoute()
+		return getNativeDefaultRoute()
 	}
 }
 
@@ -160,7 +160,7 @@ func AddDefaultRoute(gateway string) error {
 	if runtime.GOOS == "windows" {
 		return addWindowsDefaultRoute(gateway)
 	} else {
-		return addLinuxDefaultRoute(gateway)
+		return addNativeDefaultRoute(gateway)
 	}
 }
 
@@ -179,8 +179,18 @@ func addLinuxDefaultRoute(gateway string) error {
 
 // CheckAdminPermission 检查是否具有管理员权限
 func CheckAdminPermission() bool {
+	return CheckAdminPermissionContext(context.Background())
+}
+
+// CheckAdminPermissionContext lets automatic actions cancel their preflight.
+func CheckAdminPermissionContext(ctx context.Context) bool {
+	if ctx.Err() != nil {
+		return false
+	}
 	if runtime.GOOS == "windows" {
-		return checkWindowsAdminPermission()
+		cmd := exec.CommandContext(ctx, "net", "session")
+		hideWindow(cmd)
+		return cmd.Run() == nil
 	} else {
 		return checkLinuxAdminPermission()
 	}

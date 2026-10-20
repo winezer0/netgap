@@ -38,6 +38,7 @@ export const backend = {
   },
   quitApp: () => QuitApp(),
   onState: (handler) => EventsOn('netgapgui:state', handler),
+  onHealth: (handler) => EventsOn('netgapgui:health', handler),
   onLogs: (handler) => EventsOn('netgapgui:logs', handler),
   onAlert: (handler) => EventsOn('netgapgui:alert', handler),
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"netgap/internal/config"
 	"netgap/internal/iproute"
@@ -48,23 +49,45 @@ func (s *Service) StopMonitoring() (*ViewState, error) {
 
 // RemoveDefaultRoute 保存并移除默认路由。
 func (s *Service) RemoveDefaultRoute() (*RouteActionResult, error) {
-	if !isAdmin() {
-		return nil, fmt.Errorf("admin permission required")
-	}
-	if err := iproute.DeleteDefaultRoute(); err != nil {
+	ctx, cancel := context.WithTimeout(s.operationContext(), time.Minute)
+	defer cancel()
+	if err := iproute.ProtectionPreflight(ctx, false); err != nil {
 		return nil, err
 	}
-	message := "All IPv4/IPv6 default routes removed; complete recovery snapshot saved"
+	if !iproute.CheckAdminPermissionContext(ctx) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("admin permission required")
+	}
+	record := s.monitor.ObserveManualRouteAction("completed")
+	err := iproute.DeleteAllDefaultRoutes(ctx)
+	record(err)
+	if err != nil {
+		return nil, err
+	}
+	message := "All IPv4/IPv6 default routes removed; recovery snapshot: " + iproute.RecoveryPath()
 	s.writeLog("WARN", message)
 	return &RouteActionResult{Success: true, Message: message}, nil
 }
 
 // RestoreDefaultRoute 恢复之前保存的默认路由。
 func (s *Service) RestoreDefaultRoute() (*RouteActionResult, error) {
-	if !isAdmin() {
+	ctx, cancel := context.WithTimeout(s.operationContext(), time.Minute)
+	defer cancel()
+	if err := iproute.ProtectionPreflight(ctx, true); err != nil {
+		return nil, err
+	}
+	if !iproute.CheckAdminPermissionContext(ctx) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		return nil, fmt.Errorf("admin permission required")
 	}
-	if err := iproute.RestoreAllDefaultRoutes(context.Background()); err != nil {
+	record := s.monitor.ObserveManualRouteAction("restored")
+	err := iproute.RestoreAllDefaultRoutes(ctx)
+	record(err)
+	if err != nil {
 		return nil, err
 	}
 	message := "All saved default routes restored"

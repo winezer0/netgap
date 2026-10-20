@@ -12,6 +12,7 @@ import (
 	"netgap/internal/detector"
 	"netgap/internal/ipchecker"
 	"netgap/internal/ipchecker/types"
+	"netgap/internal/iproute"
 	monitorcore "netgap/internal/monitor"
 )
 
@@ -24,6 +25,36 @@ func awaitRunSignal(t *testing.T, signal <-chan struct{}) {
 	}
 }
 
+func TestPendingBackoffContinuesQueriesAndPreservesRouteError(t *testing.T) {
+	queries, validations := 0, 0
+	m := NewManager(nil, func(context.Context, *config.Config) (*monitorcore.CheckResult, error) {
+		queries++
+		result := localRecoveryResult()
+		result.ValidateCurrent = func(context.Context) error { validations++; return errors.New("test forbids actual route operations") }
+		return result, nil
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	run := &monitorRun{ctx: ctx, cancel: cancel, done: make(chan struct{}), pending: &iproute.DisconnectTask{ID: "test-capability"}, pendingLoaded: true, nextRetry: time.Now().Add(time.Hour)}
+	run.health.Start(1)
+	run.health.SetDisconnect("pending", monitorcore.ErrRoutePermission, run.nextRetry)
+	m.current = run
+	m.active.Store(run)
+	m.healthRun.Store(run)
+	m.removeRouteOnMatch.Store(true)
+	for range 3 {
+		if m.checkOnce(run, &config.Config{Interval: 1, RemoveRouteOnMatch: true}) {
+			t.Fatal("backoff stopped monitoring")
+		}
+	}
+	if queries != 3 || validations != 0 || run.pending.ID != "test-capability" {
+		t.Fatal(queries, validations)
+	}
+	if h := m.Health(); h.LastSuccessAt == 0 || h.QueryFailure != "" || h.DisconnectFailure == "" || h.DisconnectState != "pending" {
+		t.Fatal(h)
+	}
+}
+
 func currentRun(m *Manager) *monitorRun {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -32,6 +63,40 @@ func currentRun(m *Manager) *monitorRun {
 
 func localRecoveryResult() *monitorcore.CheckResult {
 	return &monitorcore.CheckResult{IPInfo: &types.IPInfo{IP: "203.0.113.10"}, IsLocal: true}
+}
+
+func TestPendingResumeFailureStillQueries(t *testing.T) {
+	queries, resumes := 0, 0
+	m := NewManager(nil, func(context.Context, *config.Config) (*monitorcore.CheckResult, error) {
+		queries++
+		return localRecoveryResult(), nil
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	run := &monitorRun{ctx: ctx, cancel: cancel, done: make(chan struct{}), pending: &iproute.DisconnectTask{ID: "fixture"}, pendingLoaded: true}
+	run.health.Start(1)
+	m.current = run
+	m.active.Store(run)
+	m.healthRun.Store(run)
+	m.removeRouteOnMatch.Store(true)
+	m.resumeDisconnect = func(ctx context.Context, task *iproute.DisconnectTask) error {
+		resumes++
+		if _, ok := ctx.Deadline(); !ok {
+			t.Fatal("missing action deadline")
+		}
+		return &iproute.PendingDisconnectError{Task: task, Err: monitorcore.ErrRoutePermission}
+	}
+	for range 2 {
+		if m.checkOnce(run, &config.Config{Interval: 1, RemoveRouteOnMatch: true}) {
+			t.Fatal("failed resume stopped query")
+		}
+	}
+	if queries != 2 || resumes != 1 || run.pending.ID != "fixture" {
+		t.Fatal(queries, resumes)
+	}
+	if h := m.Health(); h.LastSuccessAt == 0 || h.QueryFailure != "" || h.DisconnectFailure == "" {
+		t.Fatal(h)
+	}
 }
 
 func TestRecoveryStopDoesNotWaitForSlowRouteOperation(t *testing.T) {

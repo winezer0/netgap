@@ -190,6 +190,8 @@ textarea {
 
 .statusBar {
   display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
   justify-content: space-between;
   font-size: 12px;
   padding: 0 4px;
@@ -234,6 +236,12 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.healthDetail {
+  flex-basis: 100%;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
 }
 
 .customApiLabelRow {

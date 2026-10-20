@@ -1,6 +1,8 @@
 package guiapp
 
 import (
+	"context"
+
 	"netgap/internal/detector"
 )
 
@@ -13,7 +15,7 @@ type ProxyConfigInfo struct {
 }
 
 func (s *Service) GetProxyConfigInfo() (*ProxyConfigInfo, error) {
-	proxy, source, err := detector.DetectProxyWithSource()
+	proxy, source, err := detector.DetectProxyWithSource(s.operationContext())
 	if err != nil {
 		return nil, err
 	}
@@ -27,4 +29,13 @@ func (s *Service) GetProxyConfigInfo() (*ProxyConfigInfo, error) {
 		Port:    proxy.Port,
 		Source:  source,
 	}, nil
+}
+
+// operationContext ties bound UI operations to the application lifecycle.
+// A service created outside Wails can still be used before Startup.
+func (s *Service) operationContext() context.Context {
+	if s.ctx != nil {
+		return s.ctx
+	}
+	return context.Background()
 }

@@ -19,6 +19,8 @@ type Options struct {
 	Shutdown      bool     `short:"s" long:"shutdown" description:"启用网络代理失效时的自动记录并删除默认路由功能"`
 	ShutdownTest  bool     `short:"S" long:"shutdown-test" description:"主动删除默认路由（测试用）"`
 	Recover       bool     `short:"r" long:"recover" description:"恢复被删除的默认路由"`
+	RecoveryDir   string   `long:"recovery-dir" description:"指定恢复快照目录，可指向 GUI 的数据目录"`
+	RecoveryCheck bool     `long:"recovery-check" description:"只检查恢复权限、快照和存储，不修改路由"`
 }
 
 // ParseOptions 解析命令行参数

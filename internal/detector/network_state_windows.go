@@ -3,6 +3,7 @@
 package detector
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -21,7 +22,10 @@ var networkWatchErr error
 var networkWatchHandles [2]uintptr
 var networkChanged = syscall.NewCallback(func(context, row, notification uintptr) uintptr { networkGeneration.Add(1); return 0 })
 
-func networkState() (string, error) {
+func networkState(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	networkWatchOnce.Do(func() {
 		dll := windows.NewLazySystemDLL("iphlpapi.dll")
 		for i, name := range []string{"NotifyRouteChange2", "NotifyIpInterfaceChange"} {
@@ -44,6 +48,9 @@ func networkState() (string, error) {
 	size := uint32(15000)
 	var buffer []byte
 	for attempts := 0; attempts < 4; attempts++ {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 		buffer = make([]byte, size)
 		err := windows.GetAdaptersAddresses(windows.AF_UNSPEC, 0x80, 0, (*windows.IpAdapterAddresses)(unsafe.Pointer(&buffer[0])), &size)
 		if errors.Is(err, windows.ERROR_BUFFER_OVERFLOW) {
@@ -66,6 +73,9 @@ func networkState() (string, error) {
 			}
 		}
 		sort.Strings(entries)
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 		if before != networkGeneration.Load() {
 			return "", fmt.Errorf("%w while capturing state", ErrStateChanged)
 		}

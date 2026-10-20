@@ -34,7 +34,7 @@ func TestCheckerRevalidatesImmediatelyBeforeDisconnect(t *testing.T) {
 	}
 	removed := false
 	c.removeRoute = func() error { removed = true; return nil }
-	_, err, _ := c.CheckProxyStatus(&config.Config{Regions: []string{"test-local"}, Shutdown: true})
+	_, err, _ := c.CheckProxyStatus(context.Background(), &config.Config{Regions: []string{"test-local"}, Shutdown: true})
 	if err == nil || removed {
 		t.Fatal("deleted route for stale result")
 	}

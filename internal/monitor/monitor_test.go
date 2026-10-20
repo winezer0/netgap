@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"context"
 	"testing"
 
 	"netgap/internal/config"
@@ -21,7 +22,7 @@ func TestCheckProxyStatus(t *testing.T) {
 
 	checker := NewChecker(resolver)
 	// Test the proxy status check.
-	status, err, _ := checker.CheckProxyStatus(cfg)
+	status, err, _ := checker.CheckProxyStatus(context.Background(), cfg)
 	if err != nil {
 		t.Logf("CheckProxyStatus failed (可能是网络问题): %v", err)
 		// 网络测试可能失败，这里不视为测试失败

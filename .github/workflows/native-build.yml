@@ -1,0 +1,197 @@
+name: Native Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Native ${{ matrix.id }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            id: windows-amd64
+            platform: windows/amd64
+            cli: netgap.exe
+          - os: ubuntu-22.04
+            id: ubuntu-22.04-amd64
+            platform: linux/amd64
+            cli: netgap
+            webkit_package: libwebkit2gtk-4.0-dev
+          - os: ubuntu-24.04
+            id: ubuntu-24.04-amd64
+            platform: linux/amd64
+            cli: netgap
+            webkit_package: libwebkit2gtk-4.1-dev
+            go_flags: -tags=webkit2_41
+            wails_tags: webkit2_41
+          - os: macos-15-intel
+            id: macos-intel
+            platform: darwin/amd64
+            cli: netgap
+          - os: macos-15
+            id: macos-arm64
+            platform: darwin/arm64
+            cli: netgap
+    env:
+      CGO_ENABLED: "1"
+      GOFLAGS: ${{ matrix.go_flags || '' }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cmd/netgapgui/frontend/package-lock.json
+
+      - name: Confirm native toolchain
+        run: |
+          mkdir -p build/evidence build/artifacts
+          {
+            echo "commit=$GITHUB_SHA"
+            echo "run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "runner=${{ matrix.os }}"
+            echo "platform=${{ matrix.platform }}"
+            echo "GOFLAGS=$GOFLAGS"
+            go version
+            go env GOHOSTOS GOHOSTARCH CGO_ENABLED
+            node --version
+            if [[ "$RUNNER_OS" == Linux ]]; then cat /etc/os-release; fi
+            if [[ "$RUNNER_OS" == macOS ]]; then sw_vers; xcodebuild -version; fi
+          } | tee build/evidence/environment.txt
+          test "$(go env GOHOSTOS)/$(go env GOHOSTARCH)" = "${{ matrix.platform }}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Install Linux GUI dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libgtk-3-dev "${{ matrix.webkit_package }}" libglib2.0-dev libglib2.0-bin glib-networking gsettings-desktop-schemas dbus python3
+
+      - name: Build GIO proxy helper
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p build/cli
+          go build -tags gio -trimpath -o build/cli/netgap-gio-proxy ./cmd/netgap-gio-proxy
+
+      - name: Test core and notification recovery
+        run: go test -race -v ./internal/netwatch ./internal/detector ./internal/ipchecker ./internal/monitor ./internal/guiapp/monitoring ./internal/iproute ./cmd/netgap -count=1 -timeout=180s 2>&1 | tee build/evidence/core-tests.txt
+
+      - name: Exercise native GIO with a private desktop fixture
+        if: runner.os == 'Linux'
+        run: |
+          go test -race -v ./internal/routenet -count=1 -timeout=60s 2>&1 | tee build/evidence/routenet-tests.txt
+          go test -c -o build/cli/detector.test ./internal/detector
+          NETGAP_GIO_DETECTOR_TEST="$(pwd)/build/cli/detector.test" python3 scripts/test-gio-helper.py build/cli/netgap-gio-proxy /usr/libexec/glib-pacrunner 2>&1 | tee build/evidence/gio-tests.txt
+
+      - name: Compile native backends and CLI
+        run: |
+          go build ./internal/...
+          mkdir -p build/cli
+          go build -trimpath -o "build/cli/${{ matrix.cli }}" ./cmd/netgap
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+
+      - name: Generate GUI bindings
+        working-directory: cmd/netgapgui
+        run: wails generate module
+
+      - name: Install frontend dependencies
+        working-directory: cmd/netgapgui/frontend
+        run: npm ci
+
+      # The project's npm build script also runs tests. This job only compiles.
+      - name: Compile frontend
+        working-directory: cmd/netgapgui/frontend
+        run: npx --no-install vite build
+
+      - name: Compile and package native GUI
+        working-directory: cmd/netgapgui
+        env:
+          WAILS_TAGS: ${{ matrix.wails_tags || '' }}
+        run: |
+          args=()
+          if [[ -n "$WAILS_TAGS" ]]; then args+=(-tags "$WAILS_TAGS"); fi
+          wails build -clean -m -s -skipbindings -platform "${{ matrix.platform }}" "${args[@]}" 2>&1 | tee ../../build/evidence/gui-build.txt
+
+      - name: Include GIO helper beside Linux GUI
+        if: runner.os == 'Linux'
+        run: cp build/cli/netgap-gio-proxy cmd/netgapgui/build/bin/netgap-gio-proxy
+
+      # Archive first: artifact ZIPs do not retain Unix executable permissions.
+      - name: Archive Linux binaries
+        if: runner.os == 'Linux'
+        run: |
+          tar -C cmd/netgapgui/build/bin -czf "build/artifacts/netgapgui-${{ matrix.id }}.tar.gz" netgapgui netgap-gio-proxy
+          tar -C build/cli -czf "build/artifacts/netgap-${{ matrix.id }}.tar.gz" netgap netgap-gio-proxy
+          ldd cmd/netgapgui/build/bin/netgapgui | tee build/evidence/gui-libraries.txt
+          ldd build/cli/netgap-gio-proxy | tee build/evidence/helper-libraries.txt
+
+      - name: Archive macOS binaries
+        if: runner.os == 'macOS'
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent cmd/netgapgui/build/bin/netgapgui.app "build/artifacts/netgapgui-${{ matrix.id }}.zip"
+          tar -C build/cli -czf "build/artifacts/netgap-${{ matrix.id }}.tar.gz" netgap
+          file cmd/netgapgui/build/bin/netgapgui.app/Contents/MacOS/netgapgui | tee build/evidence/gui-architecture.txt
+          otool -L cmd/netgapgui/build/bin/netgapgui.app/Contents/MacOS/netgapgui | tee build/evidence/gui-libraries.txt
+
+      - name: Archive Windows binaries
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path cmd/netgapgui/build/bin/netgapgui.exe -DestinationPath build/artifacts/netgapgui-${{ matrix.id }}.zip
+          Compress-Archive -Path build/cli/netgap.exe -DestinationPath build/artifacts/netgap-${{ matrix.id }}.zip
+
+      - name: Upload native binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-${{ matrix.id }}
+          path: build/artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: evidence-${{ matrix.id }}
+          path: build/evidence/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Write validation summary
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          {
+            echo "## Native ${{ matrix.id }}: $JOB_STATUS"
+            echo "Commit: $GITHUB_SHA"
+            echo "Build and automated tests only. Interactive desktop acceptance and real route deletion/recovery are not covered."
+            echo "Artifacts: native-${{ matrix.id }} (on success), evidence-${{ matrix.id }}."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -22,6 +22,21 @@ var ErrProxyRules = errors.New("proxy rule resolution failed")
 type proxyRules struct {
 	servers, bypass, pacURL string
 	autoDetect, environment bool
+	native                  bool
+	gnome                   *gnomeProxyRules
+	gioState                string
+}
+
+// Explicit fields keep fingerprints independent of pointer addresses.
+func (r *proxyRules) fingerprint() string {
+	if r == nil {
+		return ""
+	}
+	state := ""
+	if r.gnome != nil {
+		state = r.gnome.state
+	}
+	return fmt.Sprintf("%q|%q|%q|%t|%t|%t|%s|%s", r.servers, r.bypass, r.pacURL, r.autoDetect, r.environment, r.native, state, r.gioState)
 }
 
 func (p *ProxyConfig) UsesURLRules() bool { return p != nil && p.rules != nil }
@@ -45,8 +60,27 @@ func (p *ProxyConfig) Routes(ctx context.Context, target *url.URL) (routes []Pro
 	}
 	if p.rules != nil {
 		r := p.rules
+		if r.gioState != "" {
+			return resolveGIOProxy(ctx, r.gioState, target)
+		}
+		if r.gnome != nil {
+			return r.gnome.routes(ctx, target)
+		}
+		if r.native {
+			return resolveNativeProxy(ctx, target)
+		}
 		if r.environment {
 			cfg := httpproxy.FromEnvironment()
+			// A valid placeholder lets httpproxy evaluate NO_PROXY, CIDRs,
+			// loopback and domain rules without parsing unused endpoints.
+			bypass := &httpproxy.Config{HTTPProxy: "http://proxy.invalid:80", HTTPSProxy: "http://proxy.invalid:80", NoProxy: cfg.NoProxy}
+			selected, err := bypass.ProxyFunc()(target)
+			if err != nil {
+				return nil, err
+			}
+			if selected == nil {
+				return []ProxyRoute{{}}, nil
+			}
 			all := envValue("ALL_PROXY")
 			if cfg.HTTPProxy == "" {
 				cfg.HTTPProxy = all

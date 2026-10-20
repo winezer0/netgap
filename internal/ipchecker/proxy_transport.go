@@ -8,9 +8,11 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"netgap/internal/detector"
@@ -28,23 +30,57 @@ type proxyRouteResolver interface {
 }
 type systemTransport struct{ config proxyRouteResolver }
 
+var errPathBudget = errors.New("proxy candidate connection budget exhausted")
+
+type routeBody struct {
+	io.ReadCloser
+	cancel context.CancelCauseFunc
+}
+
+func (b *routeBody) Close() error { defer b.cancel(nil); return b.ReadCloser.Close() }
+
+func routeBudget(ctx context.Context, slots int) time.Duration {
+	budget := 1500 * time.Millisecond
+	if deadline, ok := ctx.Deadline(); ok {
+		share := time.Until(deadline) / time.Duration(slots)
+		if share < budget {
+			budget = share
+		}
+	}
+	if budget <= 0 {
+		return time.Nanosecond
+	}
+	return budget
+}
+
 func (t *systemTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	var routes []detector.ProxyRoute
 	var err error
 	if t.config == nil {
 		routes = []detector.ProxyRoute{{}}
 	} else {
-		routes, err = t.config.Routes(req.Context(), req.URL)
+		rulesCtx, cancel := context.WithTimeout(req.Context(), routeBudget(req.Context(), 3))
+		routes, err = t.config.Routes(rulesCtx, req.URL)
+		cancel()
 	}
 	if err != nil {
 		return nil, err
 	}
 	var lastErr error
 	var lastProxy *url.URL
-	for _, route := range routes {
+	for index, route := range routes {
 		if err := req.Context().Err(); err != nil {
 			return nil, err
 		}
+		candidateCtx, cancel := context.WithCancelCause(req.Context())
+		var wroteRequest atomic.Bool
+		timer := time.AfterFunc(routeBudget(req.Context(), len(routes)-index+1), func() {
+			if !wroteRequest.Load() {
+				cancel(errPathBudget)
+			}
+		})
+		trace := &httptrace.ClientTrace{WroteRequest: func(httptrace.WroteRequestInfo) { wroteRequest.Store(true); timer.Stop() }}
+		candidate := req.Clone(httptrace.WithClientTrace(candidateCtx, trace))
 		transport := http.DefaultTransport.(*http.Transport).Clone()
 		transport.Proxy = nil
 		transport.DisableKeepAlives = true
@@ -58,9 +94,11 @@ func (t *systemTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 				transport.Proxy = http.ProxyURL(route.URL)
 			}
 		}
-		response, err := transport.RoundTrip(req)
+		response, err := transport.RoundTrip(candidate)
+		timer.Stop()
 		transport.CloseIdleConnections()
 		if err == nil {
+			response.Body = &routeBody{ReadCloser: response.Body, cancel: cancel}
 			if observe, ok := req.Context().Value(routeObserverKey{}).(func(*detector.ProxyConfig)); ok {
 				actual := &detector.ProxyConfig{}
 				if route.URL != nil {
@@ -71,11 +109,19 @@ func (t *systemTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			}
 			return response, nil
 		}
+		budgetExpired := errors.Is(context.Cause(candidateCtx), errPathBudget)
+		cancel(nil)
+		if req.Context().Err() != nil {
+			return nil, req.Context().Err()
+		}
+		if budgetExpired && !wroteRequest.Load() {
+			err = &net.OpError{Op: "proxyconnect", Net: "tcp", Err: fmt.Errorf("%w: %w", errPathBudget, context.DeadlineExceeded)}
+		}
 		lastErr = err
 		lastProxy = route.URL
 		// Only replay bodyless GETs after connection failure. Origin HTTP
 		// errors never authorize a different path or implicit DIRECT.
-		if req.Method != http.MethodGet || req.Body != nil || !proxyConnectionFailure(err) {
+		if req.Method != http.MethodGet || req.Body != nil || wroteRequest.Load() || !proxyConnectionFailure(err) {
 			break
 		}
 	}

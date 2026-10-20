@@ -18,10 +18,11 @@ import (
 )
 
 const (
-	appName        = "netgapgui"
-	eventStateName = "netgapgui:state"
-	eventLogName   = "netgapgui:logs"
-	eventAlertName = "netgapgui:alert"
+	appName         = "netgapgui"
+	eventStateName  = "netgapgui:state"
+	eventLogName    = "netgapgui:logs"
+	eventAlertName  = "netgapgui:alert"
+	eventHealthName = "netgapgui:health"
 )
 
 // Service 表示 GUI 应用服务。
@@ -40,7 +41,10 @@ type Service struct {
 
 // NewService 创建 GUI 服务对象。
 func NewService() (*Service, error) {
-	dir := appDir()
+	dir, err := stateDir()
+	if err != nil {
+		return nil, err
+	}
 	store := configstore.NewStoreWithPath(appName, filepath.Join(dir, appName+".yaml"))
 	iproute.SetCacheDir(dir)
 
@@ -64,6 +68,7 @@ func NewService() (*Service, error) {
 
 	checker := monitorcore.NewChecker(resolver)
 	service.monitor = monitoring.NewManager(service.writeLog, checker.CheckProxyStatusResultContext)
+	service.monitor.SetHealthListener(service.emitHealth)
 	return service, nil
 }
 
@@ -107,13 +112,22 @@ func (s *Service) State() *ViewState {
 		Running:            running,
 		StatusText:         runningText(running),
 		PermissionText:     permissionText(isAdmin()),
+		Health:             s.monitor.Health(),
 	}
 }
 
 // SaveSettings 保存界面配置。
 func (s *Service) SaveSettings(input *configstore.Settings) (*ViewState, error) {
+	normalized := configstore.NormalizeSettings(input)
+	if normalized.RemoveRouteOnMatch {
+		ctx, cancel := context.WithTimeout(s.operationContext(), 15*time.Second)
+		defer cancel()
+		if err := iproute.ProtectionPreflight(ctx, false); err != nil {
+			return nil, err
+		}
+	}
 	s.mu.Lock()
-	s.settings = configstore.NormalizeSettings(input)
+	s.settings = normalized
 	current := s.settings
 	s.mu.Unlock()
 

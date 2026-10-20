@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"netgap/internal/config"
+	"netgap/internal/detector"
 	"netgap/internal/ipchecker"
 	"netgap/internal/iproute"
 	monitorcore "netgap/internal/monitor"
@@ -29,10 +30,16 @@ type monitorRun struct {
 	done             chan struct{}
 	localHandled     bool
 	proxyUnavailable bool
+	pending          *iproute.DisconnectTask
+	pendingLoaded    bool
+	nextRetry        time.Time
+	retryDelay       time.Duration
+	health           monitorcore.HealthTracker
 }
 
 // Manager 表示可启动和停止的监测管理器。
 type Manager struct {
+	resumeDisconnect   func(context.Context, *iproute.DisconnectTask) error
 	mu                 sync.RWMutex
 	current            *monitorRun
 	active             atomic.Pointer[monitorRun]
@@ -41,6 +48,10 @@ type Manager struct {
 	logf               LoggerFunc
 	tickDuration       func(seconds int) time.Duration
 	removeRouteOnMatch atomic.Bool
+	actionMu           sync.Mutex
+	actionCancel       context.CancelFunc
+	healthRun          atomic.Pointer[monitorRun]
+	healthListener     atomic.Pointer[func(monitorcore.Health)]
 }
 
 // NewManager 创建监测管理器。
@@ -75,12 +86,21 @@ func (m *Manager) Start(cfg *config.Config) error {
 	if m.check == nil {
 		return errors.New("monitor check function is nil")
 	}
+	if cfg.RemoveRouteOnMatch && m.removeRoute == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), monitorcore.DisconnectAttemptTimeout)
+		defer cancel()
+		if err := iproute.ProtectionPreflight(ctx, false); err != nil {
+			return err
+		}
+	}
 	m.removeRouteOnMatch.Store(cfg.RemoveRouteOnMatch)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	run := &monitorRun{ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	run.health.Start(cfg.Interval)
 	m.current = run
 	m.active.Store(run)
+	m.healthRun.Store(run)
 	go m.run(run, cloneConfig(cfg))
 	return nil
 }
@@ -92,7 +112,54 @@ func (m *Manager) Stop() bool {
 		return false
 	}
 	run.cancel()
+	run.health.Stop()
+	m.notifyHealth(run)
 	return true
+}
+
+// Health remains readable while a route action is waiting on the OS.
+func (m *Manager) Health() monitorcore.Health {
+	run := m.healthRun.Load()
+	if run == nil {
+		return monitorcore.Health{Phase: "stopped", DisconnectState: "idle"}
+	}
+	result := run.health.Snapshot()
+	if m.active.Load() != run || run.ctx.Err() != nil {
+		result.Running, result.Phase = false, "stopped"
+	}
+	return result
+}
+
+func (m *Manager) SetHealthListener(listener func(monitorcore.Health)) {
+	if listener == nil {
+		m.healthListener.Store(nil)
+		return
+	}
+	m.healthListener.Store(&listener)
+}
+
+// ObserveManualRouteAction returns a completion callback that cannot overwrite
+// a newer automatic operation or a replacement monitor run.
+func (m *Manager) ObserveManualRouteAction(state string) func(error) {
+	run := m.healthRun.Load()
+	if run == nil {
+		return func(error) {}
+	}
+	revision := run.health.RouteRevision()
+	return func(err error) {
+		if m.healthRun.Load() == run && run.health.RecordManualRouteResult(revision, state, err) {
+			m.notifyHealth(run)
+		}
+	}
+}
+
+func (m *Manager) notifyHealth(run *monitorRun) {
+	if m.healthRun.Load() != run {
+		return
+	}
+	if listener := m.healthListener.Load(); listener != nil {
+		(*listener)(m.Health())
+	}
 }
 
 // Running 返回当前是否正在监测。
@@ -104,6 +171,13 @@ func (m *Manager) Running() bool {
 // SetRemoveRouteOnMatch updates automatic route removal without restarting monitoring.
 func (m *Manager) SetRemoveRouteOnMatch(enabled bool) {
 	m.removeRouteOnMatch.Store(enabled)
+	if !enabled {
+		m.actionMu.Lock()
+		if m.actionCancel != nil {
+			m.actionCancel()
+		}
+		m.actionMu.Unlock()
+	}
 }
 
 func (m *Manager) run(run *monitorRun, cfg *config.Config) {
@@ -140,6 +214,40 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 	if !m.isCurrent(run) {
 		return false
 	}
+	hadPending := false
+	if !m.removeRouteOnMatch.Load() {
+		if run.pending != nil {
+			run.health.SetDisconnect("suspended", nil, time.Time{})
+		}
+		run.pending, run.pendingLoaded = nil, false
+	} else if m.removeRoute == nil {
+		if !run.pendingLoaded {
+			ctx, cancel := context.WithTimeout(run.ctx, monitorcore.DisconnectAttemptTimeout)
+			pending, err := iproute.PendingDefaultRouteDisconnect(ctx)
+			cancel()
+			if err != nil {
+				run.health.SetDisconnect("failed", err, time.Time{})
+				m.writeLog("ERROR", "Read pending disconnect failed: "+err.Error())
+			}
+			run.pending, run.pendingLoaded = pending, true
+			if pending != nil {
+				m.writeLog("WARN", "Resuming saved disconnect after checking its route/network scope")
+			}
+		}
+		if run.pending != nil {
+			hadPending = true
+			if !time.Now().Before(run.nextRetry) && m.performRouteAction(run, nil) {
+				return true
+			}
+		}
+	}
+	// Always query during backoff or after a failed retry. A fresh result must
+	// never widen an existing capability or start another action in this tick.
+	if !m.isCurrent(run) {
+		return false
+	}
+	run.health.BeginCheck(cfg.Interval)
+	m.notifyHealth(run)
 	result, err := m.check(run.ctx, cfg)
 	if !m.isCurrent(run) {
 		return false
@@ -148,6 +256,11 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 	if result != nil {
 		fetcherName = result.FetcherName
 	}
+	if err == nil && (result == nil || result.IPInfo == nil) {
+		err = errors.New("exit IP query returned no location information")
+	}
+	run.health.CompleteCheck(err)
+	m.notifyHealth(run)
 	if err != nil {
 		if errors.Is(err, ipchecker.ErrProxyUnavailable) {
 			if !run.proxyUnavailable {
@@ -157,10 +270,6 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 			return false
 		}
 		m.writeLog("ERROR", fmt.Sprintf("Check failed via %s [state=%s]: %v", fetcherName, monitorcore.FailureKind(err), err))
-		return false
-	}
-	if result == nil || result.IPInfo == nil {
-		m.writeLog("WARN", fmt.Sprintf("Exit IP query empty via %s", fetcherName))
 		return false
 	}
 	if run.proxyUnavailable {
@@ -187,15 +296,66 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 	if !m.removeRouteOnMatch.Load() {
 		return false
 	}
-	message, routeErr, attempted := m.removeRouteForRun(run, result.ValidateCurrent)
+	if hadPending {
+		return false
+	}
+	return m.performRouteAction(run, result.ValidateCurrent)
+}
+
+func (m *Manager) performRouteAction(run *monitorRun, validate func(context.Context) error) bool {
+	run.health.SetDisconnect("running", nil, time.Time{})
+	m.notifyHealth(run)
+	message, routeErr, attempted := m.removeRouteForRun(run, validate)
 	if !attempted {
+		if run.pending != nil {
+			run.health.SetDisconnect("pending", nil, run.nextRetry)
+		} else {
+			run.health.SetDisconnect("idle", nil, time.Time{})
+		}
+		m.notifyHealth(run)
 		return false
 	}
 	if routeErr != nil {
-		m.writeLog("ERROR", fmt.Sprintf("Remove default route failed: %v", routeErr))
+		var pending *iproute.PendingDisconnectError
+		if errors.As(routeErr, &pending) {
+			run.pending = pending.Task
+		}
+		if errors.Is(routeErr, detector.ErrStateChanged) || errors.Is(routeErr, iproute.ErrDisconnectObsolete) {
+			run.pending = nil
+		}
+		if run.pending != nil {
+			if run.retryDelay == 0 {
+				run.retryDelay = time.Second
+			} else {
+				run.retryDelay *= 2
+			}
+			if run.retryDelay > 30*time.Second {
+				run.retryDelay = 30 * time.Second
+			}
+			run.nextRetry = time.Now().Add(run.retryDelay)
+			run.health.SetDisconnect("pending", routeErr, run.nextRetry)
+			m.writeLog("WARN", fmt.Sprintf("Disconnect pending; retry after %s; exit checks continue", run.retryDelay))
+		} else {
+			run.retryDelay, run.nextRetry = 0, time.Time{}
+			if errors.Is(routeErr, iproute.ErrDisconnectObsolete) {
+				run.health.SetDisconnect("idle", nil, time.Time{})
+			} else {
+				run.health.SetDisconnect("failed", routeErr, time.Time{})
+			}
+		}
+		m.notifyHealth(run)
+		if errors.Is(routeErr, iproute.ErrDisconnectObsolete) {
+			m.writeLog("INFO", "Saved disconnect is obsolete; exit checks continue")
+		} else {
+			m.writeLog("ERROR", fmt.Sprintf("Remove default route failed: %v", routeErr))
+		}
 		return false
 	}
 	run.localHandled = true
+	run.pending = nil
+	run.retryDelay, run.nextRetry = 0, time.Time{}
+	run.health.SetDisconnect("completed", nil, time.Time{})
+	m.notifyHealth(run)
 	if message != "" {
 		m.writeLog("WARN", message)
 	}
@@ -222,16 +382,41 @@ func (m *Manager) removeRouteForRun(run *monitorRun, validate func(context.Conte
 	if m.current != run || run.ctx.Err() != nil || !m.removeRouteOnMatch.Load() {
 		return "", nil, false
 	}
+	actionCtx, cancel := context.WithTimeout(run.ctx, monitorcore.DisconnectAttemptTimeout)
+	m.actionMu.Lock()
+	m.actionCancel = cancel
+	if !m.removeRouteOnMatch.Load() {
+		cancel()
+	}
+	m.actionMu.Unlock()
+	defer func() {
+		cancel()
+		m.actionMu.Lock()
+		m.actionCancel = nil
+		m.actionMu.Unlock()
+	}()
 	if validate != nil {
-		if err := validate(run.ctx); err != nil {
+		if err := validate(actionCtx); err != nil {
 			return "", err, true
 		}
 	}
 	remove := m.removeRoute
 	if remove == nil {
 		remove = func() (string, error) {
-			if !iproute.CheckAdminPermission() {
-				return "", errors.New("admin permission required")
+			if run.pending != nil && m.resumeDisconnect != nil {
+				return "", m.resumeDisconnect(actionCtx, run.pending)
+			}
+			if !iproute.CheckAdminPermissionContext(actionCtx) {
+				if err := actionCtx.Err(); err != nil {
+					return "", err
+				}
+				return "", monitorcore.ErrRoutePermission
+			}
+			if run.pending != nil {
+				if err := iproute.ResumeDefaultRouteDisconnect(actionCtx, run.pending); err != nil {
+					return "", err
+				}
+				return "All IPv4/IPv6 default routes removed; complete recovery snapshot saved", nil
 			}
 			guard := func(ctx context.Context) error {
 				if !m.removeRouteOnMatch.Load() {
@@ -242,7 +427,7 @@ func (m *Manager) removeRouteForRun(run *monitorRun, validate func(context.Conte
 				}
 				return ctx.Err()
 			}
-			if err := iproute.DeleteAllDefaultRoutesGuarded(run.ctx, guard); err != nil {
+			if err := iproute.DeleteAllDefaultRoutesGuarded(actionCtx, guard); err != nil {
 				return "", err
 			}
 			return "All IPv4/IPv6 default routes removed; complete recovery snapshot saved", nil
@@ -254,9 +439,11 @@ func (m *Manager) removeRouteForRun(run *monitorRun, validate func(context.Conte
 
 func (m *Manager) finishRun(run *monitorRun) {
 	run.cancel()
+	run.health.Stop()
 	m.mu.Lock()
 	wasCurrent := m.current == run
 	if wasCurrent {
+		m.notifyHealth(run)
 		m.current = nil
 		m.active.CompareAndSwap(run, nil)
 	}
@@ -269,7 +456,7 @@ func (m *Manager) finishRun(run *monitorRun) {
 
 func defaultRemoveRoute() (string, error) {
 	if !iproute.CheckAdminPermission() {
-		return "", errors.New("admin permission required")
+		return "", monitorcore.ErrRoutePermission
 	}
 	if err := iproute.DeleteDefaultRoute(); err != nil {
 		return "", err

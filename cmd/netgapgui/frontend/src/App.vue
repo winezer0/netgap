@@ -77,6 +77,8 @@ const savePreferences = async (preferences) => {
     <StatusBar
       :is-admin="state.isAdmin"
       :running="state.running"
+      :health="state.health"
+      :interval="state.interval"
       :translate="t"
     />
     <NotificationToast />

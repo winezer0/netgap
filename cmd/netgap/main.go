@@ -4,6 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
+	"time"
 
 	logging "github.com/winezer0/zaplogs"
 
@@ -15,11 +19,27 @@ import (
 )
 
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		// Restore normal signal handling while cooperative shutdown drains.
+		// A second interrupt can still terminate a blocked native call.
+		stop()
+	}()
 	// 解析命令行参数
 	opts, err := ParseOptions()
 	if err != nil {
 		fmt.Printf("加载配置失败: %v\n", err)
 		return
+	}
+	if opts.RecoveryDir != "" {
+		dir, err := filepath.Abs(opts.RecoveryDir)
+		if err != nil {
+			fmt.Printf("Invalid recovery directory: %v\n", err)
+			return
+		}
+		iproute.SetCacheDir(dir)
 	}
 
 	// 初始化日志记录器
@@ -43,14 +63,30 @@ func main() {
 	}
 
 	// 处理 --recover 选项
+	if opts.Recover || opts.RecoveryCheck || opts.ShutdownTest || opts.Shutdown {
+		preflightCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		err := iproute.ProtectionPreflight(preflightCtx, opts.Recover || opts.RecoveryCheck)
+		cancel()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		fmt.Printf("Recovery snapshot: %s (keep this path and execution identity for recovery)\n", iproute.RecoveryPath())
+	}
+	if opts.RecoveryCheck {
+		fmt.Println("Recovery permissions, snapshot format and storage checks passed; routes unchanged. Network bindings, conflicts and expiry are rechecked during actual recovery.")
+		return
+	}
 	if opts.Recover {
-		if !iproute.CheckAdminPermission() {
+		if !iproute.CheckAdminPermissionContext(ctx) {
 			fmt.Println("error: admin permission required to restore route")
 			return
 		}
 
 		fmt.Println("尝试恢复默认路由...")
-		if err := iproute.RestoreAllDefaultRoutes(context.Background()); err != nil {
+		actionCtx, cancel := context.WithTimeout(ctx, time.Minute)
+		defer cancel()
+		if err := iproute.RestoreAllDefaultRoutes(actionCtx); err != nil {
 			fmt.Printf("添加默认路由失败: %v\n", err)
 			return
 		}
@@ -61,13 +97,15 @@ func main() {
 
 	// 处理 --shutdown-test 选项
 	if opts.ShutdownTest {
-		if !iproute.CheckAdminPermission() {
+		if !iproute.CheckAdminPermissionContext(ctx) {
 			fmt.Println("error: admin permission required to delete route")
 			return
 		}
 
 		// The deletion operation durably saves every route before mutation.
-		err = iproute.DeleteDefaultRoute()
+		actionCtx, cancel := context.WithTimeout(ctx, time.Minute)
+		defer cancel()
+		err = iproute.DeleteAllDefaultRoutes(actionCtx)
 		if err != nil {
 			fmt.Printf("delete default route failed: %v\n", err)
 			return
@@ -79,7 +117,7 @@ func main() {
 
 	// 处理 --shutdown 选项
 	if opts.Shutdown {
-		if !iproute.CheckAdminPermission() {
+		if !iproute.CheckAdminPermissionContext(ctx) {
 			fmt.Println("错误: 需要管理员权限才能执行网络操作")
 			return
 		}
@@ -114,5 +152,5 @@ func main() {
 	}()
 
 	// Start monitoring.
-	monitor.StartMonitoring(cfg, monitor.NewChecker(resolver))
+	monitor.StartMonitoring(ctx, cfg, monitor.NewChecker(resolver))
 }

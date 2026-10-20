@@ -80,6 +80,7 @@ export namespace guiapp {
 	    running: boolean;
 	    statusText: string;
 	    permissionText: string;
+	    health: monitor.Health;
 	
 	    static createFrom(source: any = {}) {
 	        return new ViewState(source);
@@ -101,7 +102,26 @@ export namespace guiapp {
 	        this.running = source["running"];
 	        this.statusText = source["statusText"];
 	        this.permissionText = source["permissionText"];
+	        this.health = this.convertValues(source["health"], monitor.Health);
 	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }
@@ -125,3 +145,45 @@ export namespace iproute {
 
 }
 
+export namespace monitor {
+
+	export class Health {
+	    runId: number;
+	    revision: number;
+	    running: boolean;
+	    phase: string;
+	    intervalSeconds: number;
+	    startedAt: number;
+	    lastAttemptAt: number;
+	    lastCompletedAt: number;
+	    lastSuccessAt: number;
+	    consecutiveFailures: number;
+	    queryFailure: string;
+	    disconnectState: string;
+	    disconnectFailure: string;
+	    nextRetryAt: number;
+
+	    static createFrom(source: any = {}) {
+	        return new Health(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.runId = source["runId"];
+	        this.revision = source["revision"];
+	        this.running = source["running"];
+	        this.phase = source["phase"];
+	        this.intervalSeconds = source["intervalSeconds"];
+	        this.startedAt = source["startedAt"];
+	        this.lastAttemptAt = source["lastAttemptAt"];
+	        this.lastCompletedAt = source["lastCompletedAt"];
+	        this.lastSuccessAt = source["lastSuccessAt"];
+	        this.consecutiveFailures = source["consecutiveFailures"];
+	        this.queryFailure = source["queryFailure"];
+	        this.disconnectState = source["disconnectState"];
+	        this.disconnectFailure = source["disconnectFailure"];
+	        this.nextRetryAt = source["nextRetryAt"];
+	    }
+	}
+
+}

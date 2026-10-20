@@ -1,10 +1,12 @@
 package detector
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 // ProxyConfig 代理配置结构体
@@ -25,8 +27,20 @@ const (
 	sourceNone   = "none"
 )
 
-func DetectProxyWithSource() (*ProxyConfig, string, error) {
-	proxy := getProxyFromSystem()
+// SystemReadTimeout is the budget for a complete proxy configuration read.
+// Child commands share it; synchronous OS calls can only check it on return.
+const SystemReadTimeout = 3 * time.Second
+
+func DetectProxyWithSource(ctx context.Context) (*ProxyConfig, string, error) {
+	ctx, cancel := context.WithTimeout(ctx, SystemReadTimeout)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return nil, sourceSystem, err
+	}
+	proxy := getProxyFromSystem(ctx)
+	if err := ctx.Err(); err != nil {
+		return nil, sourceSystem, err
+	}
 	if proxy != nil && proxy.configErr != nil {
 		return nil, sourceSystem, fmt.Errorf("%w: %w", ErrProxyRules, proxy.configErr)
 	}
@@ -36,14 +50,8 @@ func DetectProxyWithSource() (*ProxyConfig, string, error) {
 
 	proxyEnv := getProxyFromEnv()
 	if proxyEnv != "" {
-		if !strings.Contains(proxyEnv, "://") {
-			proxyEnv = "http://" + proxyEnv
-		}
-		if parsed := parseProxyURL(proxyEnv); parsed != nil {
-			parsed.rules = &proxyRules{environment: true}
-			return parsed, sourceEnv, nil
-		}
-		return nil, sourceEnv, fmt.Errorf("%w: invalid environment proxy configuration", ErrProxyRules)
+		// Validate only the endpoint selected for the eventual request URL.
+		return &ProxyConfig{Enabled: true, Type: "rules", rules: &proxyRules{environment: true}}, sourceEnv, nil
 	}
 
 	// 无代理

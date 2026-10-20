@@ -1,6 +1,7 @@
 package detector
 
 import (
+	"context"
 	"os"
 	"testing"
 )
@@ -11,7 +12,7 @@ func TestDetectProxy(t *testing.T) {
 	os.Unsetenv("HTTPS_PROXY")
 	os.Unsetenv("ALL_PROXY")
 
-	proxy, source, err := DetectProxyWithSource()
+	proxy, source, err := DetectProxyWithSource(context.Background())
 	if err != nil {
 		t.Errorf("DetectProxy failed: %v", err)
 	}

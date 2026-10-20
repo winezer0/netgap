@@ -64,7 +64,10 @@ type proxyRequest struct {
 	target  *uint16
 }
 
-func getProxyFromSystem() *ProxyConfig {
+func getProxyFromSystem(ctx context.Context) *ProxyConfig {
+	if err := ctx.Err(); err != nil {
+		return &ProxyConfig{configErr: err}
+	}
 	var cfg nativeIEConfig
 	ok, _, err := winConfig.Call(uintptr(unsafe.Pointer(&cfg)))
 	if ok == 0 {

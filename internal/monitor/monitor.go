@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -22,20 +23,22 @@ type IPResolver interface {
 
 // Checker combines external IP acquisition with local IP location lookup.
 type Checker struct {
-	state       func(context.Context) (string, error)
-	resolver    IPResolver
-	lookupIP    func(context.Context, *detector.ProxyConfig, []string, []string, string) (string, error, string)
-	removeRoute func() error
+	resumeDisconnect func(context.Context, *iproute.DisconnectTask) error
+	detectProxy      func(context.Context) (*detector.ProxyConfig, string, error)
+	state            func(context.Context) (string, error)
+	resolver         IPResolver
+	lookupIP         func(context.Context, *detector.ProxyConfig, []string, []string, string) (string, error, string)
+	removeRoute      func() error
+	pending          *iproute.DisconnectTask
+	pendingLoaded    bool
+	nextRetry        time.Time
+	retryDelay       time.Duration
+	health           HealthTracker
 }
 
 // NewChecker creates a monitor checker with a local IP resolver.
 func NewChecker(resolver IPResolver) *Checker {
-	return &Checker{state: detector.StateFingerprint, resolver: resolver, lookupIP: ipchecker.GetExternalIPContext}
-}
-
-// CheckProxyStatusResult obtains the exit IP and resolves its location locally.
-func (c *Checker) CheckProxyStatusResult(cfg *config.Config) (*CheckResult, error) {
-	return c.CheckProxyStatusResultContext(context.Background(), cfg)
+	return &Checker{detectProxy: detector.DetectProxyWithSource, state: detector.StateFingerprint, resolver: resolver, lookupIP: ipchecker.GetExternalIPContext}
 }
 
 // CheckProxyStatusResultContext propagates monitor cancellation to the IP query.
@@ -66,7 +69,11 @@ func (c *Checker) CheckProxyStatusResultContext(ctx context.Context, cfg *config
 			return nil
 		}
 	}
-	proxy, _, err := detector.DetectProxyWithSource()
+	detect := c.detectProxy
+	if detect == nil {
+		detect = detector.DetectProxyWithSource
+	}
+	proxy, _, err := detect(ctx)
 	if err != nil {
 		return result, err
 	}
@@ -110,19 +117,36 @@ func (c *Checker) CheckProxyStatusResultContext(ctx context.Context, cfg *config
 }
 
 // StartMonitoring 启动监控
-func StartMonitoring(cfg *config.Config, checker *Checker) {
+func StartMonitoring(ctx context.Context, cfg *config.Config, checker *Checker) {
 	logging.Infof("开始监控代理网络状态，本地区域: %v, 检查间隔: %d秒", cfg.Regions, cfg.Interval)
 
 	ticker := time.NewTicker(time.Duration(cfg.Interval) * time.Second)
 	defer ticker.Stop()
-	runMonitoring(cfg, checker, ticker.C)
+	runMonitoring(ctx, cfg, checker, ticker.C)
 }
 
-func runMonitoring(cfg *config.Config, checker *Checker, ticks <-chan time.Time) {
-	for range ticks {
-		status, err, fetcherName := checker.CheckProxyStatus(cfg)
+func runMonitoring(ctx context.Context, cfg *config.Config, checker *Checker, ticks <-chan time.Time) {
+	checker.health.Start(cfg.Interval)
+	defer checker.health.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case _, ok := <-ticks:
+			if !ok {
+				return
+			}
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		status, err, fetcherName := checker.CheckProxyStatus(ctx, cfg)
+		logging.Infof("Monitor health: %s", checker.Health())
+		if ctx.Err() != nil {
+			return
+		}
 		if err != nil {
-			logging.Errorf("[接口: %s] 检测失败 [state=%s]: %v", fetcherName, FailureKind(err), err)
+			logging.Errorf("[接口: %s] 检测或保护操作未完成 [state=%s]: %v", fetcherName, FailureKind(err), err)
 			continue
 		}
 
@@ -142,8 +166,57 @@ func runMonitoring(cfg *config.Config, checker *Checker, ticks <-chan time.Time)
 
 // CheckProxyStatus 检查代理状态
 // CheckProxyStatus checks the proxy exit location against configured regions.
-func (c *Checker) CheckProxyStatus(cfg *config.Config) (bool, error, string) {
-	result, err := c.CheckProxyStatusResult(cfg)
+func (c *Checker) CheckProxyStatus(ctx context.Context, cfg *config.Config) (bool, error, string) {
+	if err := ctx.Err(); err != nil {
+		return false, err, ""
+	}
+	if cfg == nil || c == nil {
+		return false, errors.New("monitor config/checker unavailable"), ""
+	}
+	if !cfg.Shutdown {
+		if c.pending != nil {
+			c.health.SetDisconnect("suspended", nil, time.Time{})
+		}
+		c.pending, c.pendingLoaded = nil, false
+	}
+	hadPending := false
+	var resumeErr error
+	if cfg.Shutdown && c.removeRoute == nil {
+		if !c.pendingLoaded {
+			actionCtx, cancel := context.WithTimeout(ctx, DisconnectAttemptTimeout)
+			pending, err := iproute.PendingDefaultRouteDisconnect(actionCtx)
+			cancel()
+			if err != nil {
+				c.health.SetDisconnect("failed", err, time.Time{})
+				logging.Errorf("读取待完成断网任务失败，继续出口检测: %v", err)
+			}
+			c.pending, c.pendingLoaded = pending, true
+		}
+		if c.pending != nil {
+			hadPending = true
+			if !time.Now().Before(c.nextRetry) {
+				c.health.SetDisconnect("running", nil, time.Time{})
+				actionCtx, cancel := context.WithTimeout(ctx, DisconnectAttemptTimeout)
+				resume := c.resumeDisconnect
+				if resume == nil {
+					resume = iproute.ResumeDefaultRouteDisconnect
+				}
+				resumeErr = resume(actionCtx, c.pending)
+				cancel()
+				if resumeErr != nil {
+					c.trackDisconnectFailure(resumeErr)
+					logging.Warnf("续作未完成，继续出口检测: %v", resumeErr)
+				} else {
+					c.pending, c.retryDelay, c.nextRetry = nil, 0, time.Time{}
+					c.health.SetDisconnect("completed", nil, time.Time{})
+					return false, nil, "saved disconnect"
+				}
+			}
+		}
+	}
+	c.health.BeginCheck(cfg.Interval)
+	result, err := c.CheckProxyStatusResultContext(ctx, cfg)
+	c.health.CompleteCheck(err)
 	fetcherName := ""
 	if result != nil {
 		fetcherName = result.FetcherName
@@ -161,25 +234,45 @@ func (c *Checker) CheckProxyStatus(cfg *config.Config) (bool, error, string) {
 	logging.Infof("[int: %s] Current IP: %s, Region: %s|%s|%s, ISN: %s",
 		fetcherName, ipInfo.IP, ipInfo.Country, ipInfo.Region, ipInfo.City, ipInfo.Isp)
 	logging.Infof("[int: %s] Actual request path: %s", fetcherName, result.PathTag())
+	// A fresh observation must not replace or widen the saved operation. Even
+	// if it became obsolete this round, wait until the next tick to act again.
+	if hadPending {
+		if result.IsLocal {
+			logging.Warnf("Local exit still detected; saved disconnect is handled separately")
+		}
+		if c.pending != nil {
+			return !result.IsLocal, &iproute.PendingDisconnectError{Task: c.pending, Err: errors.New("saved disconnect waiting for bounded retry; exit query completed")}, fetcherName
+		}
+		if resumeErr != nil {
+			return !result.IsLocal, resumeErr, fetcherName
+		}
+	}
 
 	if result.IsLocal {
 		logging.Warnf("[int: %s] Detected local network, performing network interruption", fetcherName)
 		if cfg.Shutdown {
+			actionCtx, cancel := context.WithTimeout(ctx, DisconnectAttemptTimeout)
+			defer cancel()
 			if result.ValidateCurrent != nil {
-				if err := result.ValidateCurrent(context.Background()); err != nil {
+				if err := result.ValidateCurrent(actionCtx); err != nil {
+					c.health.SetDisconnect("failed", err, time.Time{})
 					return false, err, fetcherName
 				}
 			}
 			remove := c.removeRoute
 			if remove == nil {
 				remove = func() error {
-					return iproute.DeleteAllDefaultRoutesGuarded(context.Background(), result.ValidateCurrent)
+					return iproute.DeleteAllDefaultRoutesGuarded(actionCtx, result.ValidateCurrent)
 				}
 			}
+			c.health.SetDisconnect("running", nil, time.Time{})
 			if err := remove(); err != nil {
+				c.trackDisconnectFailure(err)
 				logging.Errorf("delete the default route error: %v", err)
 				return false, fmt.Errorf("delete default route: %w", err), fetcherName
 			} else {
+				c.retryDelay, c.nextRetry = 0, time.Time{}
+				c.health.SetDisconnect("completed", nil, time.Time{})
 				logging.Infof("delete the default route success...")
 			}
 		} else {
@@ -189,3 +282,31 @@ func (c *Checker) CheckProxyStatus(cfg *config.Config) (bool, error, string) {
 
 	return !result.IsLocal, nil, fetcherName
 }
+
+func (c *Checker) trackDisconnectFailure(err error) {
+	var pending *iproute.PendingDisconnectError
+	if errors.As(err, &pending) {
+		c.pending = pending.Task
+	}
+	if errors.Is(err, detector.ErrStateChanged) || errors.Is(err, iproute.ErrDisconnectObsolete) {
+		c.pending = nil
+	}
+	if c.pending != nil {
+		if c.retryDelay == 0 {
+			c.retryDelay = time.Second
+		} else {
+			c.retryDelay *= 2
+		}
+		if c.retryDelay > 30*time.Second {
+			c.retryDelay = 30 * time.Second
+		}
+		c.nextRetry = time.Now().Add(c.retryDelay)
+		c.health.SetDisconnect("pending", err, c.nextRetry)
+		logging.Warnf("断网未完成，将在 %s 后重试剩余路由，出口查询继续", c.retryDelay)
+	} else {
+		c.retryDelay, c.nextRetry = 0, time.Time{}
+		c.health.SetDisconnect("failed", err, time.Time{})
+	}
+}
+
+func (c *Checker) Health() Health { return c.health.Snapshot() }

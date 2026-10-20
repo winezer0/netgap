@@ -1,4 +1,4 @@
-import { onMounted, reactive } from 'vue'
+import { onMounted, onUnmounted, reactive } from 'vue'
 import { backend } from '../services/backend'
 import { translations } from '../services/translations'
 import { useNotification } from './useNotification'
@@ -15,7 +15,17 @@ const state = reactive({
   logs: [],
   isAdmin: false,
   running: false,
+  health: { runId: 0, revision: 0, running: false, phase: 'stopped', disconnectState: 'idle' },
 })
+
+function mergeHealth(payload) {
+  if (!payload) return
+  const current = state.health
+  if (payload.runId < current.runId ||
+      (payload.runId === current.runId && payload.revision < current.revision)) return
+  state.health = payload
+  state.running = payload.running
+}
 
 function mergeState(payload) {
   if (!payload) {
@@ -31,7 +41,8 @@ function mergeState(payload) {
   state.removeRouteOnMatch = payload.removeRouteOnMatch ?? state.removeRouteOnMatch
   state.logs = payload.logs ?? state.logs
   state.isAdmin = payload.isAdmin ?? state.isAdmin
-  state.running = payload.running ?? state.running
+  if (payload.health) mergeHealth(payload.health)
+  else state.running = payload.running ?? state.running
 }
 
 function t(key) {
@@ -82,19 +93,26 @@ async function quitApp() {
 }
 
 export function useAppState() {
+  const listeners = []
   onMounted(async () => {
     const { addNotification } = useNotification()
-    mergeState(await backend.getInitialState())
-    backend.onState((payload) => mergeState(payload))
-    backend.onLogs((payload) => {
+    listeners.push(backend.onState((payload) => mergeState(payload)))
+    listeners.push(backend.onHealth((payload) => mergeHealth(payload)))
+    listeners.push(backend.onLogs((payload) => {
       state.logs = payload ?? []
-    })
-    backend.onAlert((payload) => {
+    }))
+    listeners.push(backend.onAlert((payload) => {
       const message = payload?.message ?? ''
       if (message) {
         addNotification(message, payload?.type ?? 'error', 3000)
       }
-    })
+    }))
+    mergeState(await backend.getInitialState())
+  })
+  onUnmounted(() => {
+    for (const remove of listeners) {
+      if (typeof remove === 'function') remove()
+    }
   })
 
   return {

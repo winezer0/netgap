@@ -1,6 +1,12 @@
 # NetGap 命令行版
 
+Linux 自动系统代理需要将 `netgap-gio-proxy` 放在 CLI 旁，并安装 GIO/glib-networking 及对应桌面代理/PAC 模块；构建与支持边界见 [GIO 实施记录](../../docs/gio-watch-recovery-results.md)。
+
+恢复前可执行 `netgap --recovery-check --recovery-dir <原快照目录>`，检查权限、快照格式和存储，不修改路由；确认目录后使用 `--recover --recovery-dir <原快照目录>`。实际恢复仍逐条校验网络绑定、冲突和有效期；失败时保留恢复数据。需要原执行身份或具有该目录访问权的管理员/root。
+
 命令行版定时检测系统代理出口 IP，并使用本地 IP 归属地数据库判断出口是否落在配置的目标区域。查询 API 不可用时会尝试其他启用的 API。
+
+每轮日志包含 `Monitor health` 摘要：最近尝试/成功时间、连续查询失败、查询错误、路由保护状态和重试时间。部分断网续作失败或退避时仍查询出口，新结果不扩大旧任务；只有断网确认完成后才按 `--shutdown` 停止监控。
 
 ## 构建与运行
 
@@ -15,6 +21,15 @@ go build -o netgap.exe ./cmd/netgap
 ```powershell
 ./netgap.exe
 ```
+
+macOS 请在本机安装 Apple Command Line Tools 后原生构建，不能使用 `CGO_ENABLED=0` 部署完整功能：
+
+```sh
+CGO_ENABLED=1 go build -o netgap ./cmd/netgap
+./netgap --help
+```
+
+macOS 已增加 CFNetwork 系统代理/PAC/WPAD 和原生双栈默认路由后端，原生行为待验证，详见 [macOS 功能支持](../../docs/macos-support.md)。
 
 查看帮助：
 
@@ -62,6 +77,8 @@ API 查询 key 以 `--api-list` 输出为准，包含 `ipconfig`、`ipify`、`se
 ## 路由操作
 
 `--shutdown`、`--shutdown-test` 和 `--recover` 涉及系统默认路由，必须以管理员权限运行。删除默认路由会导致网络中断；如需恢复，请运行 `--recover`。恢复依赖此前保存的网关信息。若恢复失败，请根据程序提示手动添加默认路由。
+
+macOS 需要有效 root 权限。CLI 快照位于当前执行用户的 `~/.cache/netgap/iproute.cache.json`，GUI 使用单独目录；删除和恢复必须保持相同入口、身份及目录。例如隔离环境中均使用 `sudo -H ./netgap`，分别传入 `--shutdown` 和 `--recover`。
 
 ```powershell
 # 管理员终端：命中目标区域时自动删除默认路由

@@ -3,19 +3,26 @@
 package detector
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"sort"
 	"strings"
 )
 
-func networkState() (string, error) {
+func networkState(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	interfaces, err := net.Interfaces()
 	if err != nil {
 		return "", err
 	}
 	var state []string
 	for _, i := range interfaces {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 		addresses, err := i.Addrs()
 		if err != nil {
 			return "", err
@@ -26,5 +33,9 @@ func networkState() (string, error) {
 		}
 	}
 	sort.Strings(state)
-	return strings.Join(state, "|"), nil
+	routes, err := extraNetworkState(ctx)
+	if err != nil {
+		return "", err
+	}
+	return strings.Join(state, "|") + routes, nil
 }
