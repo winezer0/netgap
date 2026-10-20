@@ -22,6 +22,29 @@
 
 Ubuntu 24.04 同时设置 Go 构建标签和 Wails 显式构建标签，覆盖绑定生成及最终 GUI 构建。依据：[Wails 平台依赖说明](https://wails.io/docs/gettingstarted/installation/)。
 
+## 最终结论
+
+**原生 CI 五个平台全部通过；交互式桌面验收和真实断网 / 恢复未执行。**
+
+- 成功运行：[39407712602](https://github.com/winezer0/netgap/actions/runs/39407712602)，验证提交 `1466ee78ee494d741944c9cd24da41e0e0b6b8eb`。
+- 时间：2026-10-20 10:24:27–10:27:00 UTC（北京时间 18:24:27–18:27:00）。
+- 分支：`validation/native-desktop-20261020`；没有合并 main 或发布 Release。
+- 上传结果：5 份原生安装包 Artifact、5 份测试 / 构建证据 Artifact，均上传成功。
+- 五个平台的日志已下载至 `build/native-validation/39407712602-evidence/`（Git 忽略），首两轮证据也保存在 `build/native-validation/`。提交号、各步骤结论、Artifact ID / SHA256 / 到期时间和环境信息永久记录在 [CI 证据清单](native-ci-evidence-2026-10-20.json)。
+- 安装包本地下载及独立归档核验尚未完成：大文件下载等待数分钟未完成，单包重试亦未完成，已停止本轮下载进程；不能将 CI 上传成功写作本地归档检查通过。可在成功运行页面下载对应安装包进行后续验收。
+- 用户确认暂时没有桌面测试环境，因此下方桌面验收矩阵仍全部为待执行；不以 CI 编译成功代替桌面行为验证。
+- 本轮未修改 WSL 路由、网卡、DNS 或系统代理。
+
+| 平台 | 原生核心竞态测试 | 完整 GUI 构建 | 安装包 / 证据上传 |
+|---|---|---|---|
+| Windows amd64 | 通过，61 个顶层用例 | 通过 | 通过 |
+| Ubuntu 22.04 amd64 | 通过，66 个顶层用例；另含 GIO / PAC 私有会话测试 | 通过，WebKit 4.0 | 通过 |
+| Ubuntu 24.04 amd64 | 通过，66 个顶层用例；另含 GIO / PAC 私有会话测试 | 通过，WebKit 4.1 | 通过 |
+| macOS Intel | 通过，55 个顶层用例 | 通过，原生 x86_64 Mach-O | 通过 |
+| macOS ARM | 通过，55 个顶层用例 | 通过，原生 arm64 Mach-O | 通过 |
+
+核心测试每个平台覆盖 7 个包；Linux 的 opt-in GIO 原生用例在普通核心测试中跳过一次，随后在私有 D-Bus / 临时配置夹具中单独执行并通过。Linux 还单独通过只读 Netlink 监听测试。GUI 构建未包含真实桌面启动，macOS 未执行 Developer ID 签名 / 公证验收。
+
 ## 执行记录
 
 - 本地工作流静态检查：`go run github.com/rhysd/actionlint/cmd/actionlint@latest .github/workflows/native-build.yml`，通过。
@@ -29,7 +52,8 @@ Ubuntu 24.04 同时设置 Go 构建标签和 Wails 显式构建标签，覆盖�
 - 修正 Ubuntu 22.04 的 CI 和发行构建依赖：安装 `libproxy1-plugin-webkit`。Ubuntu 24.04 的 libproxy 0.5 使用不同依赖布局。依据：[Ubuntu 22.04 PAC 插件](https://packages.ubuntu.com/jammy/libproxy1-plugin-webkit)、[Ubuntu 24.04 libproxy 依赖](https://packages.ubuntu.com/noble/libproxy1v5)。
 - 第二轮：[39406841806](https://github.com/winezer0/netgap/actions/runs/39406841806)，提交 `b0d900b`。Ubuntu 22.04 / 24.04、macOS Intel / ARM 均通过全部构建和上传；Windows 的 `TestManagerStopShouldNotLogAfterStop` 失败（停止后额外输出两条日志）。
 - Windows 失败已用新测试 `TestManagerStopDuringResultPublication` 在本地稳定复现：停止发生在健康状态发布与结果日志之间，旧结果和异步停止日志随后发布。修复为普通日志检查运行身份和取消状态，发布结果前复查；停止日志在 Stop / 自然结束之间去重，显式 Stop 在返回前请求发布，不等待路由操作退出。已开始调用的日志回调不强行中断。
-- 修复后本地 `go test -race ./internal/guiapp/monitoring -count=100 -timeout=180s` 通过，含停止不阻塞慢路由及旧任务不覆盖新运行的测试；第三轮原生 CI 待记录。
+- 修复后本地 `go test -race ./internal/guiapp/monitoring -count=100 -timeout=180s` 通过，含停止不阻塞慢路由及旧任务不覆盖新运行的测试；`go test -race ./internal/monitor ./internal/guiapp/monitoring ./internal/iproute -count=1 -timeout=180s` 通过。
+- 第三轮原生 CI 五个平台全部通过，详见上方最终结论及证据清单。
 - 交互式桌面验收：用户确认暂时没有桌面测试环境，全部保留为待执行。
 - 真实断网 / 恢复：尚未执行，仅限具有快照和控制台的隔离虚拟机。
 
