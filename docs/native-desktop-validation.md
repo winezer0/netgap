@@ -11,7 +11,7 @@
 | Runner | 平台 | GUI 依赖 / 标签 | 安装包 Artifact |
 |---|---|---|---|
 | windows-latest | windows/amd64 | WebView2 | native-windows-amd64 |
-| ubuntu-22.04 | linux/amd64 | GTK 3、WebKit 4.0、GIO | native-ubuntu-22.04-amd64 |
+| ubuntu-22.04 | linux/amd64 | GTK 3、WebKit 4.0、GIO、libproxy1-plugin-webkit | native-ubuntu-22.04-amd64 |
 | ubuntu-24.04 | linux/amd64 | GTK 3、WebKit 4.1、GIO；webkit2_41 | native-ubuntu-24.04-amd64 |
 | macos-15-intel | darwin/amd64 | Xcode / macOS 原生框架 | native-macos-intel |
 | macos-15 | darwin/arm64 | Xcode / macOS 原生框架 | native-macos-arm64 |
@@ -25,7 +25,8 @@ Ubuntu 24.04 同时设置 Go 构建标签和 Wails 显式构建标签，覆盖�
 ## 执行记录
 
 - 本地工作流静态检查：`go run github.com/rhysd/actionlint/cmd/actionlint@latest .github/workflows/native-build.yml`，通过。
-- 原生 CI：待推送后补充实际运行链接、提交号和结论。
+- 首轮原生 CI：[39406149335](https://github.com/winezer0/netgap/actions/runs/39406149335)，提交 `9218c4d`。Windows、macOS ARM 和 Ubuntu 24.04 已通过；Ubuntu 22.04 的 PAC 集成测试失败，系统解析返回 DIRECT。继续核对其 libproxy 0.4 独立 PAC 插件依赖，未放宽断言或跳过测试。
+- 修正 Ubuntu 22.04 的 CI 和发行构建依赖：安装 `libproxy1-plugin-webkit`；重跑结论待补充。Ubuntu 24.04 的 libproxy 0.5 使用不同依赖布局。依据：[Ubuntu 22.04 PAC 插件](https://packages.ubuntu.com/jammy/libproxy1-plugin-webkit)、[Ubuntu 24.04 libproxy 依赖](https://packages.ubuntu.com/noble/libproxy1v5)。
 - 交互式桌面验收：尚未执行；当前确认的执行环境为 Windows 和 WSL，等待 macOS 与隔离 Linux 桌面测试环境。
 - 真实断网 / 恢复：尚未执行，仅限具有快照和控制台的隔离虚拟机。
 

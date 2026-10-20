@@ -1,5 +1,7 @@
 # GIO、监听恢复与恢复预检实施记录
 
+后续原生 CI 执行、Ubuntu 24.04/WebKit 4.1 构建和桌面验收状态见 [原生构建与桌面验收记录](native-desktop-validation.md)。以下为本批次最初的本地 / WSL 记录，不代表后续 CI 结论。
+
 日期：2026-10-20。当前工作区未提交。Windows/WSL Go 工具链为 1.26.4；WSL 为 Ubuntu、普通用户 UID 1000。本文件的最新状态覆盖此前计划中的 B2/C/D 待实施描述。
 
 ## 交付状态
@@ -33,6 +35,8 @@ go build -o /目标目录/netgap ./cmd/netgap
 ```
 
 构建机需要 C 编译器、pkg-config、GIO 开发文件。运行机需要 GIO、glib-networking、相应代理/PAC 模块；GNOME 还需要桌面代理 schema、gsettings 和可用的用户会话服务。安装 GIO 接口库不等于已经安装了这些模块。
+
+Ubuntu 22.04 / libproxy 0.4 还需安装 `libproxy1-plugin-webkit` 提供 PAC JavaScript 解析；仅安装 WebKit 库并不会安装此插件。Ubuntu 24.04 / libproxy 0.5 的依赖布局不同。部署后应运行本地 PAC 集成检查确认功能，不能仅凭进程启动判断 PAC 可用。
 
 助手必须放在应用可执行文件旁，不从 PATH 搜索。Linux 发布归档和原生构建工作流已加入助手；工作流新增原生助手和私有桌面测试，尚未提交或触发 CI。
 
