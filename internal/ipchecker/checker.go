@@ -3,6 +3,8 @@ package ipchecker
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -18,19 +20,23 @@ import (
 )
 
 var (
-	ipFetchers      = make(map[string]types.IPFetcher)
-	errorCounts     = make(map[string]int)
-	fetchersMux     sync.RWMutex
-	initialized     bool
-	initializedMux  sync.Once
-	maxErrorCount   = 10
-	roundRobinMux   sync.Mutex
-	roundRobinStart int
+	ErrProxyUnavailable    = errors.New("proxy listener is unavailable")
+	ErrNoAvailableFetchers = errors.New("no IP query API is currently available")
+	ipFetchers             = make(map[string]types.IPFetcher)
+	errorCounts            = make(map[string]int)
+	cooldownUntil          = make(map[string]time.Time)
+	fetchersMux            sync.RWMutex
+	initialized            bool
+	initializedMux         sync.Once
+	maxErrorCount          = 10
+	roundRobinMux          sync.Mutex
+	roundRobinStart        int
 )
 
 const (
 	perFetcherTimeout = 5 * time.Second
 	lookupTimeout     = 10 * time.Second
+	fetcherCooldown   = 30 * time.Second
 )
 
 // 初始化IP查询器
@@ -72,31 +78,38 @@ func RegisterFetcher(fetcher types.IPFetcher) {
 	defer fetchersMux.Unlock()
 	ipFetchers[fetcher.Name()] = fetcher
 	errorCounts[fetcher.Name()] = 0
+	delete(cooldownUntil, fetcher.Name())
 }
 
 // GetExternalIP 获取外部IP信息
 func GetExternalIP(proxy *detector.ProxyConfig, apiUse, apiBan []string, customAPIURL string) (string, error, string) {
-	initFetchers()
+	return GetExternalIPContext(context.Background(), proxy, apiUse, apiBan, customAPIURL)
+}
 
-	// 设置自定义 API URL
-	setCustomAPIEndpoint(customAPIURL)
+// GetExternalIPContext keeps queries cancellable and retains failed APIs for recovery.
+func GetExternalIPContext(ctx context.Context, proxy *detector.ProxyConfig, apiUse, apiBan []string, customAPIURL string) (string, error, string) {
+	if err := ctx.Err(); err != nil {
+		return "", err, ""
+	}
+	initFetchers()
 
 	client := &http.Client{
 		Timeout: perFetcherTimeout,
 	}
 
-	if proxy.Enabled && proxy.Type == "port" {
-		proxyURL, err := url.Parse("http://" + proxy.Address + ":" + proxy.Port)
-		if err == nil {
-			client.Transport = &http.Transport{
-				Proxy: http.ProxyURL(proxyURL),
-			}
+	if proxy != nil && proxy.Enabled && proxy.Type == "port" {
+		proxyURL, err := url.Parse("http://" + net.JoinHostPort(proxy.Address, proxy.Port))
+		if err != nil {
+			return "", fmt.Errorf("invalid proxy address: %w", err), ""
 		}
+		transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+		defer transport.CloseIdleConnections()
+		client.Transport = transport
 	}
 
 	fetchers := getRoundRobinFetchers(apiUse, apiBan)
 	if len(fetchers) == 0 {
-		return "", nil, ""
+		return "", ErrNoAvailableFetchers, ""
 	}
 
 	logging.Debugf("GetExternalIP: 可用查询器数量: %d", len(fetchers))
@@ -106,9 +119,10 @@ func GetExternalIP(proxy *detector.ProxyConfig, apiUse, apiBan []string, customA
 
 	var lastErr error
 	var lastFetcherName string
-	lookupCtx, cancelLookup := context.WithTimeout(context.Background(), lookupTimeout)
+	lookupCtx, cancelLookup := context.WithTimeout(ctx, lookupTimeout)
 	defer cancelLookup()
 	for _, fetcher := range fetchers {
+		fetcher = configuredFetcher(fetcher, customAPIURL)
 		if err := lookupCtx.Err(); err != nil {
 			lastErr = err
 			break
@@ -118,6 +132,9 @@ func GetExternalIP(proxy *detector.ProxyConfig, apiUse, apiBan []string, customA
 		fetcherCtx, cancelFetcher := context.WithTimeout(lookupCtx, perFetcherTimeout)
 		ip, err := fetcher.Fetch(fetcherCtx, client)
 		cancelFetcher()
+		if ctx.Err() != nil {
+			return "", ctx.Err(), fetcherName
+		}
 
 		if err != nil {
 			logging.Debugf("查询器 %s 结果: error=%v", fetcherName, err)
@@ -125,6 +142,10 @@ func GetExternalIP(proxy *detector.ProxyConfig, apiUse, apiBan []string, customA
 			logging.Debugf("查询器 %s 结果: IP=%s", fetcherName, ip)
 		} else {
 			logging.Debugf("查询器 %s 结果: IP为空", fetcherName)
+		}
+		var connectionErr *net.OpError
+		if proxy != nil && proxy.Enabled && errors.As(err, &connectionErr) && connectionErr.Op == "proxyconnect" {
+			return "", fmt.Errorf("%w (%s): %w", ErrProxyUnavailable, net.JoinHostPort(proxy.Address, proxy.Port), err), fetcherName
 		}
 
 		if err == nil && ip != "" {
@@ -141,7 +162,9 @@ func GetExternalIP(proxy *detector.ProxyConfig, apiUse, apiBan []string, customA
 		if err == nil {
 			err = errors.New("API returned an empty IP address")
 		}
-		increaseErrorCount(fetcherName)
+		if !isNetworkError(err) {
+			increaseErrorCount(fetcherName)
+		}
 		lastErr = err
 		lastFetcherName = fetcherName
 		if lookupCtx.Err() != nil {
@@ -153,6 +176,14 @@ func GetExternalIP(proxy *detector.ProxyConfig, apiUse, apiBan []string, customA
 	return "", lastErr, lastFetcherName
 }
 
+// Connection, DNS and cancellation failures do not establish an API fault.
+func isNetworkError(err error) bool {
+	var requestErr *url.Error
+	var networkErr net.Error
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
+		errors.As(err, &requestErr) || errors.As(err, &networkErr)
+}
+
 // increaseErrorCount 增加错误计数
 func increaseErrorCount(fetcherName string) {
 	fetchersMux.Lock()
@@ -161,8 +192,8 @@ func increaseErrorCount(fetcherName string) {
 	errorCounts[fetcherName]++
 
 	if errorCounts[fetcherName] > maxErrorCount {
-		delete(ipFetchers, fetcherName)
-		delete(errorCounts, fetcherName)
+		cooldownUntil[fetcherName] = time.Now().Add(fetcherCooldown)
+		errorCounts[fetcherName] = 0
 	}
 }
 
@@ -172,6 +203,7 @@ func resetErrorCount(fetcherName string) {
 	defer fetchersMux.Unlock()
 
 	errorCounts[fetcherName] = 0
+	delete(cooldownUntil, fetcherName)
 }
 
 // GetAllFetchers 获取所有已注册的查询器
@@ -243,6 +275,15 @@ func FilterFetchers(apiUse, apiBan []string) []types.IPFetcher {
 // getRoundRobinFetchers rotates the starting fetcher while keeping fallback order stable.
 func getRoundRobinFetchers(apiUse, apiBan []string) []types.IPFetcher {
 	fetchers := FilterFetchers(apiUse, apiBan)
+	fetchersMux.RLock()
+	available := fetchers[:0]
+	for _, fetcher := range fetchers {
+		if !time.Now().Before(cooldownUntil[fetcher.Name()]) {
+			available = append(available, fetcher)
+		}
+	}
+	fetchersMux.RUnlock()
+	fetchers = available
 	sort.Slice(fetchers, func(i, j int) bool {
 		if fetchers[i].Key() == fetchers[j].Key() {
 			return fetchers[i].Name() < fetchers[j].Name()
@@ -264,14 +305,12 @@ func getRoundRobinFetchers(apiUse, apiBan []string) []types.IPFetcher {
 	return rotated
 }
 
-// setCustomAPIEndpoint 设置自定义 API 端点
-func setCustomAPIEndpoint(url string) {
-	fetchersMux.Lock()
-	defer fetchersMux.Unlock()
-
-	if fetcher, ok := ipFetchers["custom-ipapi"]; ok {
-		if customFetcher, ok := fetcher.(*fetchers.CustomIPFetcher); ok {
-			customFetcher.SetEndpoint(url)
-		}
+// Each query owns its custom endpoint, including while an older run is stopping.
+func configuredFetcher(fetcher types.IPFetcher, endpoint string) types.IPFetcher {
+	if _, ok := fetcher.(*fetchers.CustomIPFetcher); ok {
+		custom := &fetchers.CustomIPFetcher{}
+		custom.SetEndpoint(endpoint)
+		return custom
 	}
+	return fetcher
 }

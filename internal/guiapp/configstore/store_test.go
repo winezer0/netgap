@@ -44,6 +44,7 @@ func TestStoreSaveLoad(t *testing.T) {
 		Regions:      []string{"广东", "深圳"},
 		APIEnabled:   []string{"pcjson", "ip2location", "customip"},
 		CustomAPIURL: "http://38.55.192.13:8080/ip?token=ipinfoapitoken",
+		CloseAction:  "tray",
 	}
 
 	if err := store.Save(input); err != nil {
@@ -73,6 +74,12 @@ func TestStoreLoadDefault(t *testing.T) {
 	}
 	if settings.Language != "zh" {
 		t.Fatalf("expected default language zh, got %s", settings.Language)
+	}
+	if settings.CloseAction != "tray" {
+		t.Fatalf("expected default close action tray, got %s", settings.CloseAction)
+	}
+	if !settings.RemoveRouteOnMatch {
+		t.Fatal("expected route removal on match to be enabled by default")
 	}
 	if len(settings.Regions) == 0 {
 		t.Fatal("expected default regions")

@@ -1,6 +1,7 @@
 package monitoring
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -21,7 +22,7 @@ func TestManagerStartStop(t *testing.T) {
 		defer mu.Unlock()
 		logs = append(logs, level+":"+message)
 	})
-	manager.check = func(cfg *config.Config) (*monitorcore.CheckResult, error) {
+	manager.check = func(ctx context.Context, cfg *config.Config) (*monitorcore.CheckResult, error) {
 		return &monitorcore.CheckResult{
 			FetcherName: "mock",
 			IPInfo:      &types.IPInfo{IP: "1.2.3.4", Region: "湖南", City: "长沙"},
@@ -70,7 +71,7 @@ func TestManagerStopShouldNotLogAfterStop(t *testing.T) {
 		defer mu.Unlock()
 		logCount++
 	})
-	manager.check = func(cfg *config.Config) (*monitorcore.CheckResult, error) {
+	manager.check = func(ctx context.Context, cfg *config.Config) (*monitorcore.CheckResult, error) {
 		return &monitorcore.CheckResult{
 			FetcherName: "mock",
 			IPInfo:      &types.IPInfo{IP: "1.2.3.4", Region: "湖南", City: "长沙"},

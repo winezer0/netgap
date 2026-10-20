@@ -7,6 +7,8 @@ export namespace configstore {
 	    regions: string[];
 	    apiEnabled: string[];
 	    customApiUrl: string;
+	    closeAction: string;
+	    removeRouteOnMatch: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -20,6 +22,8 @@ export namespace configstore {
 	        this.regions = source["regions"];
 	        this.apiEnabled = source["apiEnabled"];
 	        this.customApiUrl = source["customApiUrl"];
+	        this.closeAction = source["closeAction"];
+	        this.removeRouteOnMatch = source["removeRouteOnMatch"];
 	    }
 	}
 
@@ -68,6 +72,8 @@ export namespace guiapp {
 	    regions: string[];
 	    apiEnabled: string[];
 	    customApiUrl: string;
+	    closeAction: string;
+	    removeRouteOnMatch: boolean;
 	    logs: string[];
 	    configPath: string;
 	    isAdmin: boolean;
@@ -87,6 +93,8 @@ export namespace guiapp {
 	        this.regions = source["regions"];
 	        this.apiEnabled = source["apiEnabled"];
 	        this.customApiUrl = source["customApiUrl"];
+	        this.closeAction = source["closeAction"];
+	        this.removeRouteOnMatch = source["removeRouteOnMatch"];
 	        this.logs = source["logs"];
 	        this.configPath = source["configPath"];
 	        this.isAdmin = source["isAdmin"];

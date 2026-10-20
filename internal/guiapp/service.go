@@ -63,7 +63,7 @@ func NewService() (*Service, error) {
 	service.resolver = resolver
 
 	checker := monitorcore.NewChecker(resolver)
-	service.monitor = monitoring.NewManager(service.writeLog, checker.CheckProxyStatusResult)
+	service.monitor = monitoring.NewManager(service.writeLog, checker.CheckProxyStatusResultContext)
 	return service, nil
 }
 
@@ -93,18 +93,20 @@ func (s *Service) State() *ViewState {
 
 	running := s.monitor.Running()
 	return &ViewState{
-		Language:       settings.Language,
-		Interval:       settings.Interval,
-		KeywordInput:   settings.KeywordInput,
-		Regions:        append([]string(nil), settings.Regions...),
-		APIEnabled:     append([]string(nil), settings.APIEnabled...),
-		CustomAPIURL:   settings.CustomAPIURL,
-		Logs:           s.logs.List(),
-		ConfigPath:     s.store.Path(),
-		IsAdmin:        isAdmin(),
-		Running:        running,
-		StatusText:     runningText(running),
-		PermissionText: permissionText(isAdmin()),
+		Language:           settings.Language,
+		Interval:           settings.Interval,
+		KeywordInput:       settings.KeywordInput,
+		Regions:            append([]string(nil), settings.Regions...),
+		APIEnabled:         append([]string(nil), settings.APIEnabled...),
+		CustomAPIURL:       settings.CustomAPIURL,
+		CloseAction:        settings.CloseAction,
+		RemoveRouteOnMatch: settings.RemoveRouteOnMatch,
+		Logs:               s.logs.List(),
+		ConfigPath:         s.store.Path(),
+		IsAdmin:            isAdmin(),
+		Running:            running,
+		StatusText:         runningText(running),
+		PermissionText:     permissionText(isAdmin()),
 	}
 }
 
@@ -117,6 +119,9 @@ func (s *Service) SaveSettings(input *configstore.Settings) (*ViewState, error) 
 
 	if err := s.store.Save(current); err != nil {
 		return nil, err
+	}
+	if s.monitor != nil {
+		s.monitor.SetRemoveRouteOnMatch(current.RemoveRouteOnMatch)
 	}
 	s.writeLog("INFO", "Configuration saved")
 	s.emitState()

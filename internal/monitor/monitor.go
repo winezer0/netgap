@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -21,17 +22,27 @@ type IPResolver interface {
 
 // Checker combines external IP acquisition with local IP location lookup.
 type Checker struct {
-	resolver IPResolver
+	resolver    IPResolver
+	lookupIP    func(context.Context, *detector.ProxyConfig, []string, []string, string) (string, error, string)
+	removeRoute func() error
 }
 
 // NewChecker creates a monitor checker with a local IP resolver.
 func NewChecker(resolver IPResolver) *Checker {
-	return &Checker{resolver: resolver}
+	return &Checker{resolver: resolver, lookupIP: ipchecker.GetExternalIPContext, removeRoute: iproute.DeleteDefaultRoute}
 }
 
 // CheckProxyStatusResult obtains the exit IP and resolves its location locally.
 func (c *Checker) CheckProxyStatusResult(cfg *config.Config) (*CheckResult, error) {
+	return c.CheckProxyStatusResultContext(context.Background(), cfg)
+}
+
+// CheckProxyStatusResultContext propagates monitor cancellation to the IP query.
+func (c *Checker) CheckProxyStatusResultContext(ctx context.Context, cfg *config.Config) (*CheckResult, error) {
 	result := &CheckResult{}
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
 	if cfg == nil {
 		return result, fmt.Errorf("monitor config is nil")
 	}
@@ -44,7 +55,7 @@ func (c *Checker) CheckProxyStatusResult(cfg *config.Config) (*CheckResult, erro
 	}
 	result.Proxy = proxy
 
-	ip, err, fetcherName := ipchecker.GetExternalIP(proxy, cfg.APIUse, cfg.APIBan, cfg.CustomAPIURL)
+	ip, err, fetcherName := c.lookupIP(ctx, proxy, cfg.APIUse, cfg.APIBan, cfg.CustomAPIURL)
 	result.FetcherName = fetcherName
 	if err != nil {
 		return result, err
@@ -55,6 +66,12 @@ func (c *Checker) CheckProxyStatusResult(cfg *config.Config) (*CheckResult, erro
 	ipInfo, err := c.resolver.Resolve(ip)
 	if err != nil {
 		return result, fmt.Errorf("resolve exit IP %s locally: %w", ip, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
+	if ipInfo == nil {
+		return result, fmt.Errorf("local IP resolver returned empty information for %s", ip)
 	}
 	result.IPInfo = ipInfo
 
@@ -75,8 +92,11 @@ func StartMonitoring(cfg *config.Config, checker *Checker) {
 
 	ticker := time.NewTicker(time.Duration(cfg.Interval) * time.Second)
 	defer ticker.Stop()
+	runMonitoring(cfg, checker, ticker.C)
+}
 
-	for range ticker.C {
+func runMonitoring(cfg *config.Config, checker *Checker, ticks <-chan time.Time) {
+	for range ticks {
 		status, err, fetcherName := checker.CheckProxyStatus(cfg)
 		if err != nil {
 			logging.Errorf("[接口: %s] 检查代理状态失败: %v", fetcherName, err)
@@ -112,8 +132,7 @@ func (c *Checker) CheckProxyStatus(cfg *config.Config) (bool, error, string) {
 
 	ipInfo := result.IPInfo
 	if ipInfo == nil {
-		logging.Warnf("[int: %s] IP info is empty, Skip this check", fetcherName)
-		return true, nil, fetcherName
+		return false, fmt.Errorf("exit IP information is empty"), fetcherName
 	}
 
 	logging.Infof("[int: %s] Current IP: %s, Region: %s|%s|%s, ISN: %s",
@@ -122,8 +141,9 @@ func (c *Checker) CheckProxyStatus(cfg *config.Config) (bool, error, string) {
 	if result.IsLocal {
 		logging.Warnf("[int: %s] Detected local network, performing network interruption", fetcherName)
 		if cfg.Shutdown {
-			if err := iproute.DeleteDefaultRoute(); err != nil {
+			if err := c.removeRoute(); err != nil {
 				logging.Errorf("delete the default route error: %v", err)
+				return false, fmt.Errorf("delete default route: %w", err), fetcherName
 			} else {
 				logging.Infof("delete the default route success...")
 			}

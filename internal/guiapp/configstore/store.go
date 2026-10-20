@@ -17,12 +17,14 @@ const (
 
 // Settings 表示 GUI 配置文件内容。
 type Settings struct {
-	Language     string   `json:"language" yaml:"language"`
-	Interval     int      `json:"interval" yaml:"interval"`
-	KeywordInput string   `json:"keywordInput" yaml:"keyword_input"`
-	Regions      []string `json:"regions" yaml:"regions"`
-	APIEnabled   []string `json:"apiEnabled" yaml:"api_enabled"`
-	CustomAPIURL string   `json:"customApiUrl" yaml:"custom_api_url"`
+	Language           string   `json:"language" yaml:"language"`
+	Interval           int      `json:"interval" yaml:"interval"`
+	KeywordInput       string   `json:"keywordInput" yaml:"keyword_input"`
+	Regions            []string `json:"regions" yaml:"regions"`
+	APIEnabled         []string `json:"apiEnabled" yaml:"api_enabled"`
+	CustomAPIURL       string   `json:"customApiUrl" yaml:"custom_api_url"`
+	CloseAction        string   `json:"closeAction" yaml:"close_action"`
+	RemoveRouteOnMatch bool     `json:"removeRouteOnMatch" yaml:"remove_route_on_match"`
 }
 
 // Store 表示 GUI 配置存储对象。
@@ -69,7 +71,7 @@ func (s *Store) Load() (*Settings, error) {
 		}
 		return nil, err
 	}
-	var settings Settings
+	settings := *DefaultSettings()
 	if err := yaml.Unmarshal(content, &settings); err != nil {
 		return nil, err
 	}
@@ -92,10 +94,12 @@ func (s *Store) Save(settings *Settings) error {
 // DefaultSettings 返回默认配置。
 func DefaultSettings() *Settings {
 	return &Settings{
-		Language:   defaultLanguage,
-		Interval:   defaultInterval,
-		Regions:    []string{"湖南", "北京", "广东"},
-		APIEnabled: []string{"ipconfig", "ipify", "seeip", "ipapi", "pcjson", "ip2location"},
+		Language:           defaultLanguage,
+		Interval:           defaultInterval,
+		Regions:            []string{"湖南", "北京", "广东"},
+		APIEnabled:         []string{"ipconfig", "ipify", "seeip", "ipapi", "pcjson", "ip2location"},
+		CloseAction:        "tray",
+		RemoveRouteOnMatch: true,
 	}
 }
 
@@ -105,12 +109,14 @@ func NormalizeSettings(settings *Settings) *Settings {
 		return DefaultSettings()
 	}
 	result := &Settings{
-		Language:     normalizeLanguage(settings.Language),
-		Interval:     normalizeInterval(settings.Interval),
-		KeywordInput: strings.TrimSpace(settings.KeywordInput),
-		Regions:      normalizeRegions(settings.Regions),
-		APIEnabled:   normalizeAPIEnabled(settings.APIEnabled),
-		CustomAPIURL: normalizeCustomAPIURL(settings.CustomAPIURL),
+		Language:           normalizeLanguage(settings.Language),
+		Interval:           normalizeInterval(settings.Interval),
+		KeywordInput:       strings.TrimSpace(settings.KeywordInput),
+		Regions:            normalizeRegions(settings.Regions),
+		APIEnabled:         normalizeAPIEnabled(settings.APIEnabled),
+		CustomAPIURL:       normalizeCustomAPIURL(settings.CustomAPIURL),
+		CloseAction:        normalizeCloseAction(settings.CloseAction),
+		RemoveRouteOnMatch: settings.RemoveRouteOnMatch,
 	}
 	if len(result.Regions) == 0 {
 		result.Regions = DefaultSettings().Regions
@@ -122,6 +128,13 @@ func NormalizeSettings(settings *Settings) *Settings {
 		result.APIEnabled = DefaultSettings().APIEnabled
 	}
 	return result
+}
+
+func normalizeCloseAction(action string) string {
+	if strings.EqualFold(strings.TrimSpace(action), "quit") {
+		return "quit"
+	}
+	return "tray"
 }
 
 func normalizeLanguage(language string) string {

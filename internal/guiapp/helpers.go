@@ -14,12 +14,14 @@ func cloneSettings(settings *configstore.Settings) *configstore.Settings {
 	regions := append([]string(nil), settings.Regions...)
 	apiEnabled := append([]string(nil), settings.APIEnabled...)
 	return &configstore.Settings{
-		Language:     settings.Language,
-		Interval:     settings.Interval,
-		KeywordInput: settings.KeywordInput,
-		Regions:      regions,
-		APIEnabled:   apiEnabled,
-		CustomAPIURL: settings.CustomAPIURL,
+		Language:           settings.Language,
+		Interval:           settings.Interval,
+		KeywordInput:       settings.KeywordInput,
+		Regions:            regions,
+		APIEnabled:         apiEnabled,
+		CustomAPIURL:       settings.CustomAPIURL,
+		CloseAction:        settings.CloseAction,
+		RemoveRouteOnMatch: settings.RemoveRouteOnMatch,
 	}
 }
 

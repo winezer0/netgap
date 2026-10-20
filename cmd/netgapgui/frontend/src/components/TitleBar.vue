@@ -11,13 +11,13 @@ import {
 
 defineProps({
   language: { type: String, required: true },
+  closeAction: { type: String, required: true },
 })
 
 defineEmits([
   'toggle-language',
-  'minimise-window',
-  'hide-to-tray',
-  'quit-app',
+  'open-settings',
+  'close-window',
 ])
 
 let isMaximised = false
@@ -26,7 +26,7 @@ let previousPosition = { x: 0, y: 0 }
 
 const toggleMaximise = async () => {
   try {
-    const maximised = await WindowIsMaximised()
+    const maximised = isMaximised || await WindowIsMaximised()
     
     if (maximised) {
       // 还原窗口
@@ -74,10 +74,11 @@ const toggleMaximise = async () => {
     <div class="windowActions">
       <button
         class="iconBtn"
-        @click="$emit('minimise-window')"
-        :title="language === 'zh' ? '最小化到任务栏' : 'Minimize to taskbar'"
+        @click="$emit('open-settings')"
+        :title="language === 'zh' ? '设置' : 'Settings'"
+        :aria-label="language === 'zh' ? '设置' : 'Settings'"
       >
-        -
+        ⚙
       </button>
       <button
         class="iconBtn"
@@ -88,17 +89,10 @@ const toggleMaximise = async () => {
       </button>
       <button
         class="iconBtn"
-        @click="$emit('hide-to-tray')"
-        :title="language === 'zh' ? '最小化到托盘' : 'Minimize to tray'"
+        @click="$emit('close-window')"
+        :title="language === 'zh' ? (closeAction === 'tray' ? '最小化到托盘' : '关闭并退出程序') : (closeAction === 'tray' ? 'Minimize to tray' : 'Quit application')"
       >
-        o
-      </button>
-      <button
-        class="iconBtn closeBtn"
-        @click="$emit('quit-app')"
-        :title="language === 'zh' ? '关闭程序' : 'Quit app'"
-      >
-        x
+        {{ closeAction === 'tray' ? 'o' : '×' }}
       </button>
     </div>
   </header>

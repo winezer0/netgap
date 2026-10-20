@@ -10,6 +10,8 @@ const state = reactive({
   regions: [],
   apiEnabled: [],
   customApiUrl: '',
+  closeAction: 'tray',
+  removeRouteOnMatch: true,
   logs: [],
   isAdmin: false,
   running: false,
@@ -25,6 +27,8 @@ function mergeState(payload) {
   state.regions = payload.regions ?? state.regions
   state.apiEnabled = payload.apiEnabled ?? state.apiEnabled
   state.customApiUrl = payload.customApiUrl ?? state.customApiUrl
+  state.closeAction = payload.closeAction ?? state.closeAction
+  state.removeRouteOnMatch = payload.removeRouteOnMatch ?? state.removeRouteOnMatch
   state.logs = payload.logs ?? state.logs
   state.isAdmin = payload.isAdmin ?? state.isAdmin
   state.running = payload.running ?? state.running
@@ -35,7 +39,7 @@ function t(key) {
   return table[key] ?? key
 }
 
-async function saveSettings() {
+async function saveSettings(overrides = {}) {
   mergeState(await backend.saveSettings({
     language: state.language,
     interval: state.interval,
@@ -43,6 +47,8 @@ async function saveSettings() {
     regions: state.regions,
     apiEnabled: state.apiEnabled,
     customApiUrl: state.customApiUrl,
+    closeAction: overrides.closeAction ?? state.closeAction,
+    removeRouteOnMatch: overrides.removeRouteOnMatch ?? state.removeRouteOnMatch,
   }))
 }
 
@@ -65,10 +71,6 @@ async function stopMonitoring() {
 async function toggleLanguage() {
   state.language = state.language === 'zh' ? 'en' : 'zh'
   await saveSettings()
-}
-
-async function minimiseWindow() {
-  await backend.minimiseWindow()
 }
 
 async function hideToTray() {
@@ -104,7 +106,6 @@ export function useAppState() {
     startMonitoring,
     stopMonitoring,
     toggleLanguage,
-    minimiseWindow,
     hideToTray,
     quitApp,
   }

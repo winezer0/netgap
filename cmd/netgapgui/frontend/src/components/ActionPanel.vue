@@ -88,7 +88,7 @@ const startMonitoring = async () => {
     emit('start-monitoring')
     // We let useAppState or backend emit the state change, just show notification
     addNotification(props.translate('startMonitoring') + ' ' + props.translate('success') || 'Success', 'success')
-  } catch (err) {
+  } catch {
     addNotification(props.translate('startMonitoring') + ' ' + props.translate('failed') || 'Failed', 'error')
   } finally {
     loadingStates.value.startMonitor = false
@@ -101,7 +101,7 @@ const stopMonitoring = async () => {
   try {
     emit('stop-monitoring')
     addNotification(props.translate('stopMonitoring') + ' ' + props.translate('success') || 'Success', 'success')
-  } catch (err) {
+  } catch {
     addNotification(props.translate('stopMonitoring') + ' ' + props.translate('failed') || 'Failed', 'error')
   } finally {
     loadingStates.value.stopMonitor = false

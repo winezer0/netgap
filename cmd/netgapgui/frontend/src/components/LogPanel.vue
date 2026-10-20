@@ -1,15 +1,33 @@
 <script setup>
-import { ref } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { backend } from '../services/backend'
 import { useNotification } from '../composables/useNotification'
 
-defineProps({
+const props = defineProps({
   logs: { type: Array, required: true },
   translate: { type: Function, required: true },
 })
 
 const { addNotification } = useNotification()
 const clearing = ref(false)
+const logsArea = ref(null)
+const followsLatestLog = ref(true)
+
+const handleLogsScroll = () => {
+  const element = logsArea.value
+  if (!element) return
+
+  const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight
+  followsLatestLog.value = distanceFromBottom <= 24
+}
+
+watch(() => props.logs, async () => {
+  await nextTick()
+  const element = logsArea.value
+  if (element && followsLatestLog.value) {
+    element.scrollTop = element.scrollHeight
+  }
+}, { immediate: true })
 
 const clearLogs = async (translate) => {
   if (clearing.value) return
@@ -39,9 +57,11 @@ const clearLogs = async (translate) => {
       </button>
     </div>
     <textarea
+      ref="logsArea"
       :value="logs.join('\n')"
       class="logsArea"
       readonly
+      @scroll="handleLogsScroll"
     />
   </section>
 </template>

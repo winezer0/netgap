@@ -18,11 +18,12 @@ func (s *Service) StartMonitoring() (*ViewState, error) {
 
 	settings := s.Settings()
 	cfg := &config.Config{
-		Regions:      append([]string(nil), settings.Regions...),
-		Interval:     settings.Interval,
-		APIUse:       append([]string(nil), settings.APIEnabled...),
-		Shutdown:     false,
-		CustomAPIURL: settings.CustomAPIURL,
+		Regions:            append([]string(nil), settings.Regions...),
+		Interval:           settings.Interval,
+		APIUse:             append([]string(nil), settings.APIEnabled...),
+		Shutdown:           false,
+		CustomAPIURL:       settings.CustomAPIURL,
+		RemoveRouteOnMatch: settings.RemoveRouteOnMatch,
 	}
 	if err := s.monitor.Start(cfg); err != nil {
 		return nil, err

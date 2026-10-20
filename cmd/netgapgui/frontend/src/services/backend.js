@@ -1,7 +1,6 @@
 import {
   EventsOn,
   WindowHide,
-  WindowMinimise,
 } from '../../wailsjs/runtime/runtime'
 import {
   AddRegion,
@@ -10,7 +9,6 @@ import {
   GetDefaultRouteInfo,
   GetProxyConfigInfo,
   HideToTray,
-  MinimiseWindow,
   QuitApp,
   RemoveDefaultRoute,
   RemoveRegion,
@@ -32,12 +30,6 @@ export const backend = {
   getDefaultRouteInfo: () => GetDefaultRouteInfo(),
   clearLogs: () => ClearLogs(),
   getProxyConfigInfo: () => GetProxyConfigInfo(),
-  minimiseWindow: async () => {
-    if (MinimiseWindow) {
-      return MinimiseWindow()
-    }
-    WindowMinimise()
-  },
   hideToTray: async () => {
     if (HideToTray) {
       return HideToTray()
