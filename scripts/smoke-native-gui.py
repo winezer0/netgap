@@ -48,7 +48,7 @@ def main() -> int:
 
         command = [str(executable)]
         if args.platform == "macos":
-            command = ["open", "-n", str(executable.parent.parent.parent)]
+            command = ["open", "-n", "-a", str(executable.parent.parent.parent)]
         if args.platform == "linux":
             xvfb = shutil.which("xvfb-run")
             if not xvfb:
@@ -70,11 +70,19 @@ def main() -> int:
             try:
                 time.sleep(5)
                 if args.platform == "macos":
-                    running = subprocess.run(["pgrep", "-x", "netgapgui"], capture_output=True, text=True)
-                    if running.returncode != 0:
+                    listing = subprocess.run(["ps", "-axo", "pid=,comm=,args="], capture_output=True, text=True)
+                    running = []
+                    for line in listing.stdout.splitlines():
+                        fields = line.split(None, 2)
+                        if len(fields) >= 2 and Path(fields[1]).name == "netgapgui":
+                            running.append(line.strip())
+                    if not running:
                         output.seek(0)
                         detail = output.read().decode("utf-8", errors="replace")
-                        raise RuntimeError(f"Launch Services did not keep the GUI running:\n{detail}")
+                        raise RuntimeError(
+                            f"Launch Services did not keep the GUI running "
+                            f"(open exit={process.poll()}, matching processes={running}):\n{detail}"
+                        )
                 elif process.poll() is not None:
                     output.seek(0)
                     detail = output.read().decode("utf-8", errors="replace")
