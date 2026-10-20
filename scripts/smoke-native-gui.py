@@ -56,38 +56,41 @@ def main() -> int:
         if args.platform == "linux":
             env.setdefault("GDK_BACKEND", "x11")
 
-        process = subprocess.Popen(
-            command,
-            cwd=root,
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.STDOUT,
-            start_new_session=(args.platform != "windows"),
-        )
-        try:
-            time.sleep(5)
-            if process.poll() is not None:
-                raise RuntimeError(f"GUI exited during startup with {process.returncode}")
-            print(f"PASS: extracted {args.platform} GUI archive and observed process startup")
-        finally:
-            if args.platform == "windows":
-                subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], check=False, capture_output=True)
-            else:
-                try:
-                    os.killpg(process.pid, signal.SIGTERM)
-                except ProcessLookupError:
-                    pass
+        with tempfile.TemporaryFile() as output:
+            process = subprocess.Popen(
+                command,
+                cwd=root,
+                env=env,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+                start_new_session=(args.platform != "windows"),
+            )
             try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
+                time.sleep(5)
+                if process.poll() is not None:
+                    output.seek(0)
+                    detail = output.read().decode("utf-8", errors="replace")
+                    raise RuntimeError(f"GUI exited during startup with {process.returncode}:\n{detail}")
+                print(f"PASS: extracted {args.platform} GUI archive and observed process startup")
+            finally:
                 if args.platform == "windows":
                     subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], check=False, capture_output=True)
                 else:
                     try:
-                        os.killpg(process.pid, signal.SIGKILL)
+                        os.killpg(process.pid, signal.SIGTERM)
                     except ProcessLookupError:
                         pass
-                process.wait()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    if args.platform == "windows":
+                        subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], check=False, capture_output=True)
+                    else:
+                        try:
+                            os.killpg(process.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                    process.wait()
     return 0
 
 
