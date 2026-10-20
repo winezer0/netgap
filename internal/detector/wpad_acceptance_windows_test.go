@@ -10,7 +10,7 @@ import (
 
 func TestNativeWPADMissingDiscoveryUsesStaticProxy(t *testing.T) {
 	target, _ := url.Parse("https://example.test/")
-	rules := &proxyRules{autoDetect: true, servers: "http=127.0.0.1:3128"}
+	rules := &proxyRules{autoDetect: true, servers: "https=127.0.0.1:3128"}
 	routes, err := autoProxyFailure(rules, target, syscall.Errno(12180))
 	if err != nil {
 		t.Fatalf("missing WPAD should use the configured static proxy: %v", err)

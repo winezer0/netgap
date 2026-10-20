@@ -47,6 +47,8 @@ def main() -> int:
             executable.chmod(executable.stat().st_mode | 0o111)
 
         command = [str(executable)]
+        if args.platform == "macos":
+            command = ["open", "-n", str(executable.parent.parent.parent)]
         if args.platform == "linux":
             xvfb = shutil.which("xvfb-run")
             if not xvfb:
@@ -67,7 +69,13 @@ def main() -> int:
             )
             try:
                 time.sleep(5)
-                if process.poll() is not None:
+                if args.platform == "macos":
+                    running = subprocess.run(["pgrep", "-x", "netgapgui"], capture_output=True, text=True)
+                    if running.returncode != 0:
+                        output.seek(0)
+                        detail = output.read().decode("utf-8", errors="replace")
+                        raise RuntimeError(f"Launch Services did not keep the GUI running:\n{detail}")
+                elif process.poll() is not None:
                     output.seek(0)
                     detail = output.read().decode("utf-8", errors="replace")
                     raise RuntimeError(f"GUI exited during startup with {process.returncode}:\n{detail}")
@@ -75,6 +83,8 @@ def main() -> int:
             finally:
                 if args.platform == "windows":
                     subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], check=False, capture_output=True)
+                elif args.platform == "macos":
+                    subprocess.run(["pkill", "-TERM", "-x", "netgapgui"], check=False, capture_output=True)
                 else:
                     try:
                         os.killpg(process.pid, signal.SIGTERM)
