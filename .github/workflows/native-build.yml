@@ -170,6 +170,13 @@ jobs:
           Compress-Archive -Path cmd/netgapgui/build/bin/netgapgui.exe -DestinationPath build/artifacts/netgapgui-${{ matrix.id }}.zip
           Compress-Archive -Path build/cli/netgap.exe -DestinationPath build/artifacts/netgap-${{ matrix.id }}.zip
 
+      - name: Verify native archives before upload
+        run: |
+          python=python3
+          if [[ "$RUNNER_OS" == Windows ]]; then python=python; fi
+          "$python" -B -m unittest discover -s scripts -p test_native_artifacts.py -v 2>&1 | tee build/evidence/archive-verifier-tests.txt
+          "$python" -B scripts/verify-native-artifacts.py build/artifacts --platform "${{ matrix.id }}" | tee build/evidence/archive-check.json
+
       - name: Upload native binaries
         uses: actions/upload-artifact@v7
         with:

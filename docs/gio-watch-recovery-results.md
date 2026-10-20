@@ -95,7 +95,11 @@ env XDG_CURRENT_DESKTOP= DESKTOP_SESSION= DISPLAY= WAYLAND_DISPLAY= DBUS_SESSION
 
 ## 剩余验证任务
 
-1. 在 macOS amd64/arm64 执行 CGO/Objective-C 和完整 GUI 原生构建，验证初始化失败、监听退出、恢复后的版本及资源释放；当前没有可用 macOS 主机。
-2. 在具备 GTK/WebKit 开发环境的 Linux 完成桌面 GUI 构建；现有 CI 以 Ubuntu 22.04/WebKit 4.0 为目标，本次 Ubuntu 24.04 WSL 缺对应依赖。不同 WebKit 目标须分别验证。
-3. 隔离桌面环境验证 sudo 原用户会话、KDE/libproxy 不同版本与缺模块行为、WPAD 发现、实际 A→B→A 切网和队列溢出后的完整恢复。
-4. 仅在隔离 Windows/Linux/macOS 环境测试双栈、多网卡真实断网/恢复、Windows 双存储副作用、并发手动/自动动作及中途失败。当前用户 WSL 不承担这类测试。
+macOS Intel/ARM 的 CGO/Objective-C、CLI 和完整 GUI 原生构建，以及 Ubuntu 22.04/WebKit 4.0、Ubuntu 24.04/WebKit 4.1 GUI 构建均已在后续 CI 通过，详情见 [原生验证记录](native-desktop-validation.md)。这些构建不再列为剩余任务。
+
+1. macOS 与 Linux 桌面交互，以及真实代理退出/重启、切网、监听初始化失败/退出/事件丢失后的自愈；验证恢复后的版本、资源释放和旧结果隔离。
+2. 隔离桌面环境验证 sudo 原用户会话、KDE/libproxy 不同版本与缺模块行为、WPAD 发现及 A→B→A 快速切网。
+3. 仅在隔离 Windows/Linux/macOS 环境测试双栈、多网卡真实断网/恢复、Windows 双存储副作用、并发手动/自动动作及中途失败。当前用户 WSL 不承担这类测试。
+4. 安装包独立归档和部署检查、macOS 签名/公证验收，以及部署网络中的外部 API 可达性和限流恢复。
+
+用户确认暂时没有桌面测试环境；无法执行项、优先级及通过标准已汇总到 [主 README](../README.md#验收状态与已知限制)，未执行项不标记通过。

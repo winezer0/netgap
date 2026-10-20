@@ -31,6 +31,15 @@ CGO_ENABLED=1 go build -o netgap ./cmd/netgap
 
 macOS 已增加 CFNetwork 系统代理/PAC/WPAD 和原生双栈默认路由后端，原生行为待验证，详见 [macOS 功能支持](../../docs/macos-support.md)。
 
+Linux 的系统解析助手需单独构建并放在 CLI 旁；构建机需 GIO 开发依赖，运行机需对应桌面/PAC 模块：
+
+```sh
+go build -o netgap ./cmd/netgap
+go build -tags gio -o netgap-gio-proxy ./cmd/netgap-gio-proxy
+```
+
+Ubuntu 22.04 使用 libproxy 0.4 时还需 `libproxy1-plugin-webkit`，仅安装 WebKit 库不足以提供该 PAC 插件。
+
 查看帮助：
 
 ```powershell
@@ -71,6 +80,8 @@ macOS 已增加 CFNetwork 系统代理/PAC/WPAD 和原生双栈默认路由后�
 | `-s, --shutdown` | 启用自动断网：检测到出口 IP 位于目标区域时删除默认路由，并在监控前保存路由信息。 |
 | `-S, --shutdown-test` | 立即保存并删除默认路由，用于测试。 |
 | `-r, --recover` | 根据已保存的路由信息恢复默认路由。 |
+| `--recovery-dir` | 指定恢复快照目录；可指定原 GUI 数据目录，须保持原快照及执行身份一致。 |
+| `--recovery-check` | 检查权限、快照格式和存储后退出，不修改路由；不保证实际网络绑定、冲突和有效期校验必然通过。 |
 
 API 查询 key 以 `--api-list` 输出为准，包含 `ipconfig`、`ipify`、`seeip`、`ipapi`、`pcjson`、`ip2location` 和 `customip` 等。
 
@@ -94,3 +105,9 @@ macOS 需要有效 root 权限。CLI 快照位于当前执行用户的 `~/.cache
 ## IP 数据库
 
 程序使用内置 IPv4/IPv6 归属地数据库。也可将 `ip2region_v4.xdb` 和 `ip2region_v6.xdb` 放入可执行文件旁的 `assets` 目录供程序使用。
+
+## 尚未完成的验收
+
+五平台原生构建和核心竞态测试已通过；真实代理/切网端到端行为、WPAD 发现、原生监听故障恢复，以及双栈、多网卡的真实断网/恢复仍未验收。Linux sudo 原用户桌面会话和不同 KDE/libproxy 版本也需要实际部署验证。
+
+当前缺少相应隔离环境；真实路由操作不能在日常主机或当前 WSL 上补测。安装包独立下载/归档核验尚未完成；外部 API 可达性及配额需在部署网络检查。剩余项目、限制与通过标准见 [主 README 验收清单](../../README.md#验收状态与已知限制)，已有证据见 [原生验证记录](../../docs/native-desktop-validation.md)。

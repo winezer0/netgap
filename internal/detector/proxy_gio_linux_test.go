@@ -79,6 +79,41 @@ func TestLinuxProxySourceBoundaries(t *testing.T) {
 	}
 }
 
+func TestGIOHelperUnavailableAndOversizedOutput(t *testing.T) {
+	t.Setenv("SUDO_UID", "")
+	helper := filepath.Join(t.TempDir(), "helper")
+	if reply, err := callGIOHelper(context.Background(), helper, "https://via.example/"); err == nil || reply != nil {
+		t.Fatal("missing helper became a usable path", reply, err)
+	}
+	for name, body := range map[string]string{
+		"not-executable": "#!/bin/sh\nexit 0\n",
+		"nonzero":        "#!/bin/sh\nprintf 'private-error' >&2\nexit 2\n",
+		"oversized":      "#!/bin/sh\nexec /usr/bin/head -c 70000 /dev/zero\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			mode := os.FileMode(0700)
+			if name == "not-executable" {
+				mode = 0600
+			}
+			if err := os.WriteFile(helper, []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(helper, mode); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			reply, err := callGIOHelper(ctx, helper, "https://via.example/")
+			if err == nil || reply != nil || strings.Contains(err.Error(), "private-error") {
+				t.Fatal("helper failure accepted or stderr exposed", reply, err)
+			}
+			if name == "oversized" && !errors.Is(err, errSettingsOutputLimit) {
+				t.Fatal("output limit not preserved", err)
+			}
+		})
+	}
+}
+
 // Enabled only by scripts/test-gio-helper.py inside its private desktop fixture.
 func TestGIONativeSystemRouting(t *testing.T) {
 	if os.Getenv("NETGAP_GIO_NATIVE_TEST") != "1" {

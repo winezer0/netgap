@@ -29,8 +29,11 @@ def run(helper, pacrunner):
             subprocess.run(["gsettings", "set", schema, key, value], env=env,
                            check=True, capture_output=True, timeout=5)
 
-        def lookup(target="--snapshot"):
-            result = subprocess.run([helper, target], env=env, check=True,
+        def lookup(target="--snapshot", overrides=None):
+            process_env = env.copy()
+            if overrides:
+                process_env.update(overrides)
+            result = subprocess.run([helper, target], env=process_env, check=True,
                                     capture_output=True, text=True, timeout=6)
             return json.loads(result.stdout)
 
@@ -48,6 +51,9 @@ def run(helper, pacrunner):
         assert lookup("http://via.example/")["routes"] == ["http://127.0.0.1:18888"]
         assert lookup("https://via.example/")["routes"] == ["http://127.0.0.1:18889"]
         assert lookup("http://ignored.example/")["routes"] == ["direct://"]
+        unavailable = lookup(overrides={"GIO_USE_PROXY_RESOLVER": "dummy"})
+        assert unavailable.get("error") and not unavailable.get("routes"), unavailable
+        assert lookup("http://via.example/")["routes"] == ["http://127.0.0.1:18888"]
 
         class PAC(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
@@ -104,18 +110,20 @@ def run(helper, pacrunner):
                 env["NETGAP_GIO_NATIVE_TEST"] = "1"
                 subprocess.run([detector_test, "-test.run=^TestGIONativeSystemRouting$", "-test.v"],
                                env=env, check=True, timeout=15)
-            worker.terminate()
-            worker.wait(timeout=3)
-            failed = lookup("https://via.example/")
-            assert failed.get("error") and not failed.get("routes"), failed
-            worker = subprocess.Popen([pacrunner], env=env, stdout=subprocess.DEVNULL,
-                                      stderr=subprocess.DEVNULL)
-            for _ in range(50):
-                recovered = lookup("https://via.example/")
-                if recovered.get("routes"):
-                    break
-                time.sleep(0.02)
-            assert recovered.get("routes"), recovered
+            for _ in range(3):
+                worker.terminate()
+                worker.wait(timeout=3)
+                failed = lookup("https://via.example/")
+                assert failed.get("error") and not failed.get("routes"), failed
+                worker = subprocess.Popen([pacrunner], env=env, stdout=subprocess.DEVNULL,
+                                          stderr=subprocess.DEVNULL)
+                for _ in range(50):
+                    recovered = lookup("https://via.example/")
+                    if recovered.get("routes", [None])[0] == "http://127.0.0.1:18888":
+                        break
+                    time.sleep(0.02)
+                assert recovered.get("routes", [None])[0] == "http://127.0.0.1:18888", recovered
+            print("PASS: missing native resolver rejected; PAC service failure/recovery repeated 3 times")
             if env.get("NETGAP_GIO_TEST_KDE") == "1":
                 env["XDG_CURRENT_DESKTOP"] = "KDE"
                 kde = Path(directory) / "kioslaverc"
