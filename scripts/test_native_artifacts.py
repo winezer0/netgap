@@ -9,6 +9,7 @@ import tarfile
 import tempfile
 import unittest
 import zipfile
+from xml.parsers.expat import ExpatError
 
 spec = importlib.util.spec_from_file_location("native_artifacts", Path(__file__).with_name("verify-native-artifacts.py"))
 verifier = importlib.util.module_from_spec(spec)
@@ -30,7 +31,7 @@ def executable(platform):
     return bytes(data)
 
 
-def archive(path, platform, gui, mode=0o755, omit_helper=False):
+def archive(path, platform, gui, mode=0o755, omit_helper=False, plist=None):
     binary = executable(platform)
     if path.name.endswith(".tar.gz"):
         names = ["netgapgui" if gui else "netgap"]
@@ -45,7 +46,7 @@ def archive(path, platform, gui, mode=0o755, omit_helper=False):
         with zipfile.ZipFile(path, "w") as output:
             if platform.startswith("macos"):
                 name = "netgapgui.app/Contents/MacOS/netgapgui"
-                output.writestr("netgapgui.app/Contents/Info.plist", plistlib.dumps({"CFBundleExecutable": "netgapgui"}))
+                output.writestr("netgapgui.app/Contents/Info.plist", plist if plist is not None else plistlib.dumps({"CFBundleExecutable": "netgapgui"}))
             else:
                 name = "netgapgui.exe" if gui else "netgap.exe"
             member = zipfile.ZipInfo(name)
@@ -55,6 +56,22 @@ def archive(path, platform, gui, mode=0o755, omit_helper=False):
 
 
 class NativeArchives(unittest.TestCase):
+    def test_wails_doctype_and_binary_plists(self):
+        metadata = {"CFBundleExecutable": "netgapgui"}
+        xml = plistlib.dumps(metadata)
+        # Match the Wails template: DOCTYPE first, without XML declaration.
+        wails = xml.split(b"\n", 1)[1]
+        self.assertTrue(wails.startswith(b"<!DOCTYPE"))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "mac.zip"
+            for data in (wails, plistlib.dumps(metadata, fmt=plistlib.FMT_BINARY)):
+                archive(path, "macos-arm64", True, plist=data)
+                self.assertEqual(len(verifier.inspect(path, "macos-arm64", True)["executables"]), 1)
+            for data in (b"<!DOCTYPE plist><plist><dict>", plistlib.dumps([]), plistlib.dumps({"CFBundleExecutable": "wrong"})):
+                archive(path, "macos-arm64", True, plist=data)
+                with self.assertRaises((ValueError, plistlib.InvalidFileException, ExpatError)):
+                    verifier.inspect(path, "macos-arm64", True)
+
     def test_all_platforms(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

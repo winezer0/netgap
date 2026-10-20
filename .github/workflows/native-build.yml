@@ -158,6 +158,7 @@ jobs:
       - name: Archive macOS binaries
         if: runner.os == 'macOS'
         run: |
+          plutil -lint cmd/netgapgui/build/bin/netgapgui.app/Contents/Info.plist | tee build/evidence/app-plist-check.txt
           ditto -c -k --sequesterRsrc --keepParent cmd/netgapgui/build/bin/netgapgui.app "build/artifacts/netgapgui-${{ matrix.id }}.zip"
           tar -C build/cli -czf "build/artifacts/netgap-${{ matrix.id }}.tar.gz" netgap
           file cmd/netgapgui/build/bin/netgapgui.app/Contents/MacOS/netgapgui | tee build/evidence/gui-architecture.txt

@@ -76,7 +76,13 @@ def inspect(path, platform, gui):
             safe_members(archive.namelist())
             require(archive.testzip() is None, "corrupt ZIP member")
             if platform.startswith("macos"):
-                info = plistlib.loads(archive.read("netgapgui.app/Contents/Info.plist"))
+                data = archive.read("netgapgui.app/Contents/Info.plist")
+                # Wails XML starts with DOCTYPE, which plistlib's automatic
+                # format detector does not recognize. Parse XML explicitly;
+                # malformed XML still fails, and binary plists remain supported.
+                fmt = plistlib.FMT_BINARY if data.startswith(b"bplist00") else plistlib.FMT_XML
+                info = plistlib.loads(data, fmt=fmt)
+                require(isinstance(info, dict), "expected app metadata dictionary")
                 require(info.get("CFBundleExecutable") == "netgapgui", "wrong app executable")
             else:
                 require(set(archive.namelist()) == set(names), "unexpected ZIP members")
