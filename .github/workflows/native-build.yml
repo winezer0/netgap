@@ -203,7 +203,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
       - name: "Manual acceptance: extract and start packaged GUI"
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && runner.os != 'macOS'
         run: |
           python=python3
           if [[ "$RUNNER_OS" == Windows ]]; then python=python; fi
@@ -235,7 +235,10 @@ jobs:
             echo "## Native ${{ matrix.id }}: $JOB_STATUS"
             echo "Commit: $GITHUB_SHA"
             if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
-              echo "Manual acceptance includes frontend interaction tests, native platform checks where applicable, and packaged GUI startup smoke."
+              echo "Manual acceptance includes frontend interaction tests, native platform checks where applicable, and packaged GUI startup smoke on Windows/Linux."
+              if [[ "$RUNNER_OS" == macOS ]]; then
+                echo "macOS GUI process launch is unavailable on the hosted runner; app bundle/architecture checks and native watcher tests ran."
+              fi
             else
               echo "Automatic build and automated tests. Manual desktop acceptance runs only through workflow_dispatch."
             fi
