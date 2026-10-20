@@ -92,7 +92,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config libgtk-3-dev "${{ matrix.webkit_package }}" "${{ matrix.pac_package }}" libglib2.0-dev libglib2.0-bin glib-networking gsettings-desktop-schemas dbus python3
+          sudo apt-get install -y build-essential pkg-config iproute2 libgtk-3-dev "${{ matrix.webkit_package }}" "${{ matrix.pac_package }}" libglib2.0-dev libglib2.0-bin glib-networking gsettings-desktop-schemas dbus python3
           dpkg-query -W 'libproxy*' 'glib-networking*' 'libwebkit2gtk*' 'libjavascriptcoregtk*' | tee build/evidence/linux-packages.txt
 
       - name: Build GIO proxy helper
@@ -116,6 +116,11 @@ jobs:
           go build ./internal/...
           mkdir -p build/cli
           go build -trimpath -o "build/cli/${{ matrix.cli }}" ./cmd/netgap
+
+      - name: Test CLI route deletion and recovery in an isolated network namespace
+        if: runner.os == 'Linux'
+        run: |
+          sudo bash scripts/test-cli-route-namespace.sh "build/cli/${{ matrix.cli }}" 2>&1 | tee build/evidence/cli-route-namespace.txt
 
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
