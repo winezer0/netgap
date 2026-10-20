@@ -77,6 +77,11 @@ static void ng_watch_invalidate(void) {
     }
     pthread_mutex_unlock(&ng_watch_mutex);
 }
+
+/* Restart the watcher through the same invalidation path used after native
+   SystemConfiguration failures. Kept internal to the macnetwork package. */
+void ng_network_watcher_restart(void) { ng_watch_invalidate(); }
+
 static void ng_watch_start(void) {
     pthread_t thread;
     if (pthread_create(&thread,NULL,ng_watch_thread,NULL)!=0) ng_watch_signal(-1);

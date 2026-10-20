@@ -183,6 +183,32 @@ jobs:
           "$python" -B -m unittest discover -s scripts -p test_native_artifacts.py -v 2>&1 | tee build/evidence/archive-verifier-tests.txt
           "$python" -B scripts/verify-native-artifacts.py build/artifacts --platform "${{ matrix.id }}" | tee build/evidence/archive-check.json
 
+      - name: "Manual acceptance: Windows WPAD fallback"
+        if: github.event_name == 'workflow_dispatch' && runner.os == 'Windows'
+        run: go test -tags acceptance -race -v ./internal/detector -run TestNativeWPAD -count=1 -timeout=60s 2>&1 | tee build/evidence/wpad-acceptance.txt
+
+      - name: "Manual acceptance: macOS native network watcher recovery"
+        if: github.event_name == 'workflow_dispatch' && runner.os == 'macOS'
+        run: go test -tags acceptance -race -v ./internal/macnetwork -run TestNativeNetworkWatcherRecoversAfterInvalidation -count=1 -timeout=30s 2>&1 | tee build/evidence/macos-watcher-acceptance.txt
+
+      - name: "Manual acceptance: frontend interaction tests"
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: cmd/netgapgui/frontend
+        run: |
+          npm run lint 2>&1 | tee ../../../build/evidence/frontend-lint.txt
+          npm test -- --reporter=verbose 2>&1 | tee ../../../build/evidence/frontend-tests.txt
+
+      - name: "Install virtual display for manual Linux GUI startup"
+        if: github.event_name == 'workflow_dispatch' && runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: "Manual acceptance: extract and start packaged GUI"
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          python=python3
+          if [[ "$RUNNER_OS" == Windows ]]; then python=python; fi
+          "$python" -B scripts/smoke-native-gui.py "build/artifacts/netgapgui-${{ matrix.id }}.${{ runner.os == 'Linux' && 'tar.gz' || 'zip' }}" "${{ runner.os == 'Windows' && 'windows' || runner.os == 'macOS' && 'macos' || 'linux' }}" 2>&1 | tee build/evidence/gui-startup-acceptance.txt
+
       - name: Upload native binaries
         uses: actions/upload-artifact@v7
         with:
@@ -208,6 +234,10 @@ jobs:
           {
             echo "## Native ${{ matrix.id }}: $JOB_STATUS"
             echo "Commit: $GITHUB_SHA"
-            echo "Build and automated tests only. Interactive desktop acceptance and real route deletion/recovery are not covered."
+            if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+              echo "Manual acceptance includes frontend interaction tests, native platform checks where applicable, and packaged GUI startup smoke."
+            else
+              echo "Automatic build and automated tests. Manual desktop acceptance runs only through workflow_dispatch."
+            fi
             echo "Artifacts: native-${{ matrix.id }} (on success), evidence-${{ matrix.id }}."
           } >> "$GITHUB_STEP_SUMMARY"

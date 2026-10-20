@@ -93,6 +93,8 @@ func NetworkState(ctx context.Context) (string, error) {
 	return result.State, err
 }
 
+func restartNetworkWatcher() { C.ng_network_watcher_restart() }
+
 func Binding(ctx context.Context, name string, family int) (InterfaceBinding, error) {
 	if err := ctx.Err(); err != nil {
 		return InterfaceBinding{}, err
