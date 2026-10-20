@@ -1,6 +1,8 @@
 package monitor
 
 import (
+	"context"
+	"net"
 	"strings"
 
 	"netgap/internal/detector"
@@ -8,10 +10,26 @@ import (
 )
 
 type CheckResult struct {
-	FetcherName string
-	Proxy       *detector.ProxyConfig
-	IPInfo      *types.IPInfo
-	IsLocal     bool
+	ValidateCurrent func(context.Context) error `json:"-"`
+	FetcherName     string
+	Proxy           *detector.ProxyConfig
+	IPInfo          *types.IPInfo
+	IsLocal         bool
+}
+
+// PathTag reports the actual final request path without proxy credentials.
+func (r *CheckResult) PathTag() string {
+	if r == nil || r.Proxy == nil {
+		return "unknown"
+	}
+	if !r.Proxy.Enabled {
+		return "DIRECT"
+	}
+	scheme := r.Proxy.Scheme
+	if scheme == "" {
+		scheme = "http"
+	}
+	return scheme + "://" + net.JoinHostPort(r.Proxy.Address, r.Proxy.Port)
 }
 
 func (r *CheckResult) LocationTag() string {

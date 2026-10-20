@@ -35,6 +35,7 @@ type monitorRun struct {
 type Manager struct {
 	mu                 sync.RWMutex
 	current            *monitorRun
+	active             atomic.Pointer[monitorRun]
 	check              CheckFunc
 	removeRoute        RemoveRouteFunc
 	logf               LoggerFunc
@@ -49,9 +50,8 @@ func NewManager(logf LoggerFunc, checks ...CheckFunc) *Manager {
 		check = checks[0]
 	}
 	return &Manager{
-		check:       check,
-		removeRoute: defaultRemoveRoute,
-		logf:        logf,
+		check: check,
+		logf:  logf,
 		tickDuration: func(seconds int) time.Duration {
 			return time.Duration(seconds) * time.Second
 		},
@@ -80,27 +80,25 @@ func (m *Manager) Start(cfg *config.Config) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	run := &monitorRun{ctx: ctx, cancel: cancel, done: make(chan struct{})}
 	m.current = run
+	m.active.Store(run)
 	go m.run(run, cloneConfig(cfg))
 	return nil
 }
 
 // Stop 停止监测循环。
 func (m *Manager) Stop() bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.current == nil || m.current.ctx.Err() != nil {
+	run := m.active.Load()
+	if run == nil || run.ctx.Err() != nil {
 		return false
 	}
-	m.current.cancel()
+	run.cancel()
 	return true
 }
 
 // Running 返回当前是否正在监测。
 func (m *Manager) Running() bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.current != nil && m.current.ctx.Err() == nil
+	run := m.active.Load()
+	return run != nil && run.ctx.Err() == nil
 }
 
 // SetRemoveRouteOnMatch updates automatic route removal without restarting monitoring.
@@ -158,7 +156,7 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 			}
 			return false
 		}
-		m.writeLog("ERROR", fmt.Sprintf("Check failed via %s: %v", fetcherName, err))
+		m.writeLog("ERROR", fmt.Sprintf("Check failed via %s [state=%s]: %v", fetcherName, monitorcore.FailureKind(err), err))
 		return false
 	}
 	if result == nil || result.IPInfo == nil {
@@ -178,18 +176,18 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 	location := result.LocationTag()
 	if !result.IsLocal {
 		run.localHandled = false
-		m.writeLog("INFO", fmt.Sprintf("Proxy is healthy api[%s] area[%s] ip[%s]", fetcherName, location, ip))
+		m.writeLog("INFO", fmt.Sprintf("Exit outside monitored regions api[%s] area[%s] ip[%s] path[%s]", fetcherName, location, ip, result.PathTag()))
 		return false
 	}
 
-	m.writeLog("WARN", fmt.Sprintf("Local exit detected api[%s] area[%s] ip[%s]", fetcherName, location, ip))
+	m.writeLog("WARN", fmt.Sprintf("Local exit detected api[%s] area[%s] ip[%s] path[%s]", fetcherName, location, ip, result.PathTag()))
 	if run.localHandled {
 		return false
 	}
 	if !m.removeRouteOnMatch.Load() {
 		return false
 	}
-	message, routeErr, attempted := m.removeRouteForRun(run)
+	message, routeErr, attempted := m.removeRouteForRun(run, result.ValidateCurrent)
 	if !attempted {
 		return false
 	}
@@ -216,14 +214,41 @@ func (m *Manager) isCurrent(run *monitorRun) bool {
 	return m.current == run && run.ctx.Err() == nil
 }
 
-// Serialize route changes with Stop so no new action can begin after Stop returns.
-func (m *Manager) removeRouteForRun(run *monitorRun) (string, error, bool) {
+// Serialize run replacement with route actions. Stop cancels without waiting
+// for this lock, so a slow OS command cannot freeze the stop control.
+func (m *Manager) removeRouteForRun(run *monitorRun, validate func(context.Context) error) (string, error, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.current != run || run.ctx.Err() != nil || !m.removeRouteOnMatch.Load() {
 		return "", nil, false
 	}
-	message, err := m.removeRoute()
+	if validate != nil {
+		if err := validate(run.ctx); err != nil {
+			return "", err, true
+		}
+	}
+	remove := m.removeRoute
+	if remove == nil {
+		remove = func() (string, error) {
+			if !iproute.CheckAdminPermission() {
+				return "", errors.New("admin permission required")
+			}
+			guard := func(ctx context.Context) error {
+				if !m.removeRouteOnMatch.Load() {
+					return errors.New("automatic route removal was disabled")
+				}
+				if validate != nil {
+					return validate(ctx)
+				}
+				return ctx.Err()
+			}
+			if err := iproute.DeleteAllDefaultRoutesGuarded(run.ctx, guard); err != nil {
+				return "", err
+			}
+			return "All IPv4/IPv6 default routes removed; complete recovery snapshot saved", nil
+		}
+	}
+	message, err := remove()
 	return message, err, true
 }
 
@@ -233,6 +258,7 @@ func (m *Manager) finishRun(run *monitorRun) {
 	wasCurrent := m.current == run
 	if wasCurrent {
 		m.current = nil
+		m.active.CompareAndSwap(run, nil)
 	}
 	m.mu.Unlock()
 	if wasCurrent {
@@ -245,17 +271,10 @@ func defaultRemoveRoute() (string, error) {
 	if !iproute.CheckAdminPermission() {
 		return "", errors.New("admin permission required")
 	}
-	route, err := iproute.GetDefaultRoute()
-	if err != nil {
-		return "", err
-	}
-	if err := iproute.SaveRouteInfo(route); err != nil {
-		return "", err
-	}
 	if err := iproute.DeleteDefaultRoute(); err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("Default route removed, gateway=%s", route.Gateway), nil
+	return "All IPv4/IPv6 default routes removed; complete recovery snapshot saved", nil
 }
 
 func cloneConfig(cfg *config.Config) *config.Config {

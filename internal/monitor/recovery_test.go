@@ -60,7 +60,7 @@ func TestRecoveryCheckerPropagatesCancellation(t *testing.T) {
 	c := newRecoveryChecker()
 	ctx, cancel := context.WithCancel(context.Background())
 	c.lookupIP = func(received context.Context, _ *detector.ProxyConfig, _ []string, _ []string, _ string) (string, error, string) {
-		if received != ctx {
+		if received.Done() != ctx.Done() {
 			t.Error("lookup did not receive the monitor context")
 		}
 		cancel()

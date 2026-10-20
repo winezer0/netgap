@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -49,22 +50,12 @@ func main() {
 		}
 
 		fmt.Println("尝试恢复默认路由...")
-		route, err := iproute.LoadRouteInfo()
-		if err != nil {
-			fmt.Printf("从缓存文件加载路由信息失败: %v\n", err)
-			fmt.Println("请手动修复默认路由，参考命令:")
-			fmt.Println("  Windows: route add 0.0.0.0 mask 0.0.0.0 网关IP")
-			fmt.Println("  Linux: ip route add default via 网关IP")
-			return
-		}
-
-		err = iproute.AddDefaultRoute(route.Gateway)
-		if err != nil {
+		if err := iproute.RestoreAllDefaultRoutes(context.Background()); err != nil {
 			fmt.Printf("添加默认路由失败: %v\n", err)
 			return
 		}
 
-		fmt.Printf("默认路由已成功恢复，网关: %s\n", route.Gateway)
+		fmt.Println("所有保存的 IPv4/IPv6 默认路由已恢复")
 		return
 	}
 
@@ -75,20 +66,7 @@ func main() {
 			return
 		}
 
-		// 先保存当前默认路由信息
-		route, err := iproute.GetDefaultRoute()
-		if err != nil {
-			fmt.Printf("get default route failed: %v\n", err)
-		} else {
-			err = iproute.SaveRouteInfo(route)
-			if err != nil {
-				fmt.Printf("save route info failed: %v\n", err)
-			} else {
-				fmt.Printf("saved default route info, gateway: %s\n", route.Gateway)
-			}
-		}
-
-		// 删除默认路由
+		// The deletion operation durably saves every route before mutation.
 		err = iproute.DeleteDefaultRoute()
 		if err != nil {
 			fmt.Printf("delete default route failed: %v\n", err)
@@ -106,20 +84,7 @@ func main() {
 			return
 		}
 
-		// 保存当前默认路由信息
-		route, err := iproute.GetDefaultRoute()
-		if err != nil {
-			fmt.Printf("获取默认路由失败: %v\n", err)
-			return
-		}
-
-		err = iproute.SaveRouteInfo(route)
-		if err != nil {
-			fmt.Printf("保存路由信息失败: %v\n", err)
-			return
-		}
-
-		fmt.Printf("已保存默认路由信息，网关: %s\n", route.Gateway)
+		fmt.Println("触发断网时将完整保存并删除所有 IPv4/IPv6 默认路由")
 	}
 
 	// 检查必要参数 - 现在 Regions 有默认值，所以不需要必检

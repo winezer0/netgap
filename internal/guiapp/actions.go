@@ -1,6 +1,7 @@
 package guiapp
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -50,17 +51,10 @@ func (s *Service) RemoveDefaultRoute() (*RouteActionResult, error) {
 	if !isAdmin() {
 		return nil, fmt.Errorf("admin permission required")
 	}
-	route, err := iproute.GetDefaultRoute()
-	if err != nil {
-		return nil, err
-	}
-	if err := iproute.SaveRouteInfo(route); err != nil {
-		return nil, err
-	}
 	if err := iproute.DeleteDefaultRoute(); err != nil {
 		return nil, err
 	}
-	message := fmt.Sprintf("Default route removed, gateway=%s", route.Gateway)
+	message := "All IPv4/IPv6 default routes removed; complete recovery snapshot saved"
 	s.writeLog("WARN", message)
 	return &RouteActionResult{Success: true, Message: message}, nil
 }
@@ -70,14 +64,10 @@ func (s *Service) RestoreDefaultRoute() (*RouteActionResult, error) {
 	if !isAdmin() {
 		return nil, fmt.Errorf("admin permission required")
 	}
-	route, err := iproute.LoadRouteInfo()
-	if err != nil {
+	if err := iproute.RestoreAllDefaultRoutes(context.Background()); err != nil {
 		return nil, err
 	}
-	if err := iproute.AddDefaultRoute(route.Gateway); err != nil {
-		return nil, err
-	}
-	message := fmt.Sprintf("Default route restored, gateway=%s", route.Gateway)
+	message := "All saved default routes restored"
 	s.writeLog("INFO", message)
 	return &RouteActionResult{Success: true, Message: message}, nil
 }
@@ -105,6 +95,9 @@ func formatProxyConfigLog(info *ProxyConfigInfo) string {
 	addr := strings.TrimSpace(info.Address)
 	port := strings.TrimSpace(info.Port)
 	if addr == "" {
+		if info.Type != "" {
+			return fmt.Sprintf("Proxy config: enabled=true source=%s mode=%s", source, info.Type)
+		}
 		return fmt.Sprintf("Proxy config: enabled=true source=%s", source)
 	}
 	if port == "" {

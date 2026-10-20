@@ -22,6 +22,7 @@ import (
 var (
 	ErrProxyUnavailable    = errors.New("proxy listener is unavailable")
 	ErrNoAvailableFetchers = errors.New("no IP query API is currently available")
+	ErrAPIResponse         = errors.New("invalid IP API response")
 	ipFetchers             = make(map[string]types.IPFetcher)
 	errorCounts            = make(map[string]int)
 	cooldownUntil          = make(map[string]time.Time)
@@ -94,17 +95,8 @@ func GetExternalIPContext(ctx context.Context, proxy *detector.ProxyConfig, apiU
 	initFetchers()
 
 	client := &http.Client{
-		Timeout: perFetcherTimeout,
-	}
-
-	if proxy != nil && proxy.Enabled && proxy.Type == "port" {
-		proxyURL, err := url.Parse("http://" + net.JoinHostPort(proxy.Address, proxy.Port))
-		if err != nil {
-			return "", fmt.Errorf("invalid proxy address: %w", err), ""
-		}
-		transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
-		defer transport.CloseIdleConnections()
-		client.Transport = transport
+		Timeout:   perFetcherTimeout,
+		Transport: &systemTransport{config: proxy},
 	}
 
 	fetchers := getRoundRobinFetchers(apiUse, apiBan)
@@ -144,7 +136,7 @@ func GetExternalIPContext(ctx context.Context, proxy *detector.ProxyConfig, apiU
 			logging.Debugf("查询器 %s 结果: IP为空", fetcherName)
 		}
 		var connectionErr *net.OpError
-		if proxy != nil && proxy.Enabled && errors.As(err, &connectionErr) && connectionErr.Op == "proxyconnect" {
+		if proxy != nil && proxy.Enabled && !proxy.UsesURLRules() && errors.As(err, &connectionErr) && connectionErr.Op == "proxyconnect" {
 			return "", fmt.Errorf("%w (%s): %w", ErrProxyUnavailable, net.JoinHostPort(proxy.Address, proxy.Port), err), fetcherName
 		}
 
@@ -152,7 +144,7 @@ func GetExternalIPContext(ctx context.Context, proxy *detector.ProxyConfig, apiU
 			address, parseErr := netip.ParseAddr(ip)
 			if parseErr != nil {
 				increaseErrorCount(fetcherName)
-				lastErr = parseErr
+				lastErr = fmt.Errorf("%w: %w", ErrAPIResponse, parseErr)
 				lastFetcherName = fetcherName
 				continue
 			}
@@ -164,6 +156,7 @@ func GetExternalIPContext(ctx context.Context, proxy *detector.ProxyConfig, apiU
 		}
 		if !isNetworkError(err) {
 			increaseErrorCount(fetcherName)
+			err = fmt.Errorf("%w: %w", ErrAPIResponse, err)
 		}
 		lastErr = err
 		lastFetcherName = fetcherName

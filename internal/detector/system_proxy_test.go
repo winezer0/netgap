@@ -16,8 +16,8 @@ func TestParseWindowsProxyServer(t *testing.T) {
 	}
 
 	got = parseWindowsProxyServer("socks=127.0.0.1:1080")
-	if got != nil {
-		t.Fatalf("expected nil for socks only, got=%#v", got)
+	if got == nil || got.Scheme != "socks4" || got.Port != "1080" {
+		t.Fatalf("expected SOCKS4 system proxy, got=%#v", got)
 	}
 }
 
@@ -39,4 +39,3 @@ func TestParseProxyURL(t *testing.T) {
 		t.Fatalf("expected nil, got=%#v", got)
 	}
 }
-

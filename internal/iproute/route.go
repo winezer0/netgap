@@ -2,6 +2,7 @@ package iproute
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -138,11 +139,7 @@ func getLinuxDefaultRoute() (*RouteInfo, error) {
 
 // DeleteDefaultRoute 删除默认路由
 func DeleteDefaultRoute() error {
-	if runtime.GOOS == "windows" {
-		return deleteWindowsDefaultRoute()
-	} else {
-		return deleteLinuxDefaultRoute()
-	}
+	return DeleteAllDefaultRoutes(context.Background())
 }
 
 // deleteWindowsDefaultRoute 删除Windows默认路由

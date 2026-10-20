@@ -34,6 +34,33 @@ func localRecoveryResult() *monitorcore.CheckResult {
 	return &monitorcore.CheckResult{IPInfo: &types.IPInfo{IP: "203.0.113.10"}, IsLocal: true}
 }
 
+func TestRecoveryStopDoesNotWaitForSlowRouteOperation(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	m := NewManager(nil, func(context.Context, *config.Config) (*monitorcore.CheckResult, error) {
+		return localRecoveryResult(), nil
+	})
+	m.removeRoute = func() (string, error) { close(entered); <-release; return "", nil }
+	if err := m.Start(&config.Config{Interval: 60, RemoveRouteOnMatch: true}); err != nil {
+		t.Fatal(err)
+	}
+	run := currentRun(m)
+	t.Cleanup(func() { m.Stop() })
+	awaitRunSignal(t, entered)
+	stopped := make(chan bool, 1)
+	go func() { stopped <- m.Stop() }()
+	select {
+	case ok := <-stopped:
+		if !ok {
+			t.Error("stop failed")
+		}
+	case <-time.After(time.Second):
+		t.Error("stop blocked behind route operation")
+	}
+	close(release)
+	awaitRunSignal(t, run.done)
+}
+
 func TestRecoveryStopCancelsPendingCheck(t *testing.T) {
 	entered := make(chan struct{})
 	m := NewManager(nil, func(ctx context.Context, cfg *config.Config) (*monitorcore.CheckResult, error) {

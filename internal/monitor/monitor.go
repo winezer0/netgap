@@ -22,6 +22,7 @@ type IPResolver interface {
 
 // Checker combines external IP acquisition with local IP location lookup.
 type Checker struct {
+	state       func(context.Context) (string, error)
 	resolver    IPResolver
 	lookupIP    func(context.Context, *detector.ProxyConfig, []string, []string, string) (string, error, string)
 	removeRoute func() error
@@ -29,7 +30,7 @@ type Checker struct {
 
 // NewChecker creates a monitor checker with a local IP resolver.
 func NewChecker(resolver IPResolver) *Checker {
-	return &Checker{resolver: resolver, lookupIP: ipchecker.GetExternalIPContext, removeRoute: iproute.DeleteDefaultRoute}
+	return &Checker{state: detector.StateFingerprint, resolver: resolver, lookupIP: ipchecker.GetExternalIPContext}
 }
 
 // CheckProxyStatusResult obtains the exit IP and resolves its location locally.
@@ -49,13 +50,30 @@ func (c *Checker) CheckProxyStatusResultContext(ctx context.Context, cfg *config
 	if c == nil || c.resolver == nil {
 		return result, fmt.Errorf("local IP resolver is unavailable")
 	}
+	if c.state != nil {
+		before, err := c.state(ctx)
+		if err != nil {
+			return result, err
+		}
+		result.ValidateCurrent = func(checkCtx context.Context) error {
+			after, err := c.state(checkCtx)
+			if err != nil {
+				return err
+			}
+			if before != after {
+				return fmt.Errorf("%w; discarding stale IP result", detector.ErrStateChanged)
+			}
+			return nil
+		}
+	}
 	proxy, _, err := detector.DetectProxyWithSource()
 	if err != nil {
 		return result, err
 	}
 	result.Proxy = proxy
 
-	ip, err, fetcherName := c.lookupIP(ctx, proxy, cfg.APIUse, cfg.APIBan, cfg.CustomAPIURL)
+	queryCtx := ipchecker.ObserveRoute(ctx, func(actual *detector.ProxyConfig) { result.Proxy = actual })
+	ip, err, fetcherName := c.lookupIP(queryCtx, proxy, cfg.APIUse, cfg.APIBan, cfg.CustomAPIURL)
 	result.FetcherName = fetcherName
 	if err != nil {
 		return result, err
@@ -65,13 +83,13 @@ func (c *Checker) CheckProxyStatusResultContext(ctx context.Context, cfg *config
 	}
 	ipInfo, err := c.resolver.Resolve(ip)
 	if err != nil {
-		return result, fmt.Errorf("resolve exit IP %s locally: %w", ip, err)
+		return result, fmt.Errorf("%w: resolve exit IP %s locally: %w", ErrLocalResolution, ip, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
 	if ipInfo == nil {
-		return result, fmt.Errorf("local IP resolver returned empty information for %s", ip)
+		return result, fmt.Errorf("%w: empty information for %s", ErrLocalResolution, ip)
 	}
 	result.IPInfo = ipInfo
 
@@ -83,6 +101,11 @@ func (c *Checker) CheckProxyStatusResultContext(ctx context.Context, cfg *config
 		}
 	}
 	result.IsLocal = isLocal
+	if result.ValidateCurrent != nil {
+		if err := result.ValidateCurrent(ctx); err != nil {
+			return result, err
+		}
+	}
 	return result, nil
 }
 
@@ -99,7 +122,7 @@ func runMonitoring(cfg *config.Config, checker *Checker, ticks <-chan time.Time)
 	for range ticks {
 		status, err, fetcherName := checker.CheckProxyStatus(cfg)
 		if err != nil {
-			logging.Errorf("[接口: %s] 检查代理状态失败: %v", fetcherName, err)
+			logging.Errorf("[接口: %s] 检测失败 [state=%s]: %v", fetcherName, FailureKind(err), err)
 			continue
 		}
 
@@ -112,7 +135,7 @@ func runMonitoring(cfg *config.Config, checker *Checker, ticks <-chan time.Time)
 				return
 			}
 		} else {
-			logging.Infof("[接口: %s] 代理工作正常", fetcherName)
+			logging.Infof("[接口: %s] 出口未命中监控地区", fetcherName)
 		}
 	}
 }
@@ -137,11 +160,23 @@ func (c *Checker) CheckProxyStatus(cfg *config.Config) (bool, error, string) {
 
 	logging.Infof("[int: %s] Current IP: %s, Region: %s|%s|%s, ISN: %s",
 		fetcherName, ipInfo.IP, ipInfo.Country, ipInfo.Region, ipInfo.City, ipInfo.Isp)
+	logging.Infof("[int: %s] Actual request path: %s", fetcherName, result.PathTag())
 
 	if result.IsLocal {
 		logging.Warnf("[int: %s] Detected local network, performing network interruption", fetcherName)
 		if cfg.Shutdown {
-			if err := c.removeRoute(); err != nil {
+			if result.ValidateCurrent != nil {
+				if err := result.ValidateCurrent(context.Background()); err != nil {
+					return false, err, fetcherName
+				}
+			}
+			remove := c.removeRoute
+			if remove == nil {
+				remove = func() error {
+					return iproute.DeleteAllDefaultRoutesGuarded(context.Background(), result.ValidateCurrent)
+				}
+			}
+			if err := remove(); err != nil {
 				logging.Errorf("delete the default route error: %v", err)
 				return false, fmt.Errorf("delete default route: %w", err), fetcherName
 			} else {
