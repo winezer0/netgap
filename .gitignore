@@ -34,3 +34,4 @@ go.work.sum
 /.idea
 /cmd/netgapgui/frontend/node_modules
 /cmd/netgapgui/build/bin
+/build/native-validation/

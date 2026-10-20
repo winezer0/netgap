@@ -103,3 +103,60 @@ func TestManagerStopShouldNotLogAfterStop(t *testing.T) {
 		t.Fatalf("expected no extra logs after stop, before=%d after=%d", before, after)
 	}
 }
+
+// Force cancellation after result validation but before result publication.
+// Stop must not leave a deferred stop message and a stale result to publish.
+func TestManagerStopDuringResultPublication(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	var logs []string
+	manager := NewManager(func(level, message string) {
+		mu.Lock()
+		defer mu.Unlock()
+		logs = append(logs, message)
+	}, func(context.Context, *config.Config) (*monitorcore.CheckResult, error) {
+		return &monitorcore.CheckResult{
+			FetcherName: "mock",
+			IPInfo:      &types.IPInfo{IP: "203.0.113.1"},
+		}, nil
+	})
+	entered, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() {
+		releaseOnce.Do(func() { close(release) })
+		manager.Stop()
+	})
+	manager.SetHealthListener(func(health monitorcore.Health) {
+		if health.Running && health.LastSuccessAt != 0 {
+			close(entered)
+			<-release
+		}
+	})
+	if err := manager.Start(&config.Config{Interval: 60}); err != nil {
+		t.Fatal(err)
+	}
+	run := currentRun(manager)
+	awaitRunSignal(t, entered)
+	if !manager.Stop() {
+		t.Fatal("stop failed")
+	}
+	mu.Lock()
+	before := len(logs)
+	mu.Unlock()
+	releaseOnce.Do(func() { close(release) })
+	awaitRunSignal(t, run.done)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(logs) != before {
+		t.Fatalf("stopped run published more logs: %v", logs[before:])
+	}
+	stopped := 0
+	for _, message := range logs {
+		if message == "Monitoring stopped" {
+			stopped++
+		}
+	}
+	if stopped != 1 {
+		t.Fatalf("expected one stop message, got %d: %v", stopped, logs)
+	}
+}

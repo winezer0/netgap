@@ -25,9 +25,12 @@ Ubuntu 24.04 同时设置 Go 构建标签和 Wails 显式构建标签，覆盖�
 ## 执行记录
 
 - 本地工作流静态检查：`go run github.com/rhysd/actionlint/cmd/actionlint@latest .github/workflows/native-build.yml`，通过。
-- 首轮原生 CI：[39406149335](https://github.com/winezer0/netgap/actions/runs/39406149335)，提交 `9218c4d`。Windows、macOS ARM 和 Ubuntu 24.04 已通过；Ubuntu 22.04 的 PAC 集成测试失败，系统解析返回 DIRECT。继续核对其 libproxy 0.4 独立 PAC 插件依赖，未放宽断言或跳过测试。
-- 修正 Ubuntu 22.04 的 CI 和发行构建依赖：安装 `libproxy1-plugin-webkit`；重跑结论待补充。Ubuntu 24.04 的 libproxy 0.5 使用不同依赖布局。依据：[Ubuntu 22.04 PAC 插件](https://packages.ubuntu.com/jammy/libproxy1-plugin-webkit)、[Ubuntu 24.04 libproxy 依赖](https://packages.ubuntu.com/noble/libproxy1v5)。
-- 交互式桌面验收：尚未执行；当前确认的执行环境为 Windows 和 WSL，等待 macOS 与隔离 Linux 桌面测试环境。
+- 首轮原生 CI：[39406149335](https://github.com/winezer0/netgap/actions/runs/39406149335)，提交 `9218c4d`。Windows、macOS Intel / ARM 和 Ubuntu 24.04 通过；Ubuntu 22.04 的 PAC 集成测试失败，系统解析返回 DIRECT。未放宽断言或跳过测试。
+- 修正 Ubuntu 22.04 的 CI 和发行构建依赖：安装 `libproxy1-plugin-webkit`。Ubuntu 24.04 的 libproxy 0.5 使用不同依赖布局。依据：[Ubuntu 22.04 PAC 插件](https://packages.ubuntu.com/jammy/libproxy1-plugin-webkit)、[Ubuntu 24.04 libproxy 依赖](https://packages.ubuntu.com/noble/libproxy1v5)。
+- 第二轮：[39406841806](https://github.com/winezer0/netgap/actions/runs/39406841806)，提交 `b0d900b`。Ubuntu 22.04 / 24.04、macOS Intel / ARM 均通过全部构建和上传；Windows 的 `TestManagerStopShouldNotLogAfterStop` 失败（停止后额外输出两条日志）。
+- Windows 失败已用新测试 `TestManagerStopDuringResultPublication` 在本地稳定复现：停止发生在健康状态发布与结果日志之间，旧结果和异步停止日志随后发布。修复为普通日志检查运行身份和取消状态，发布结果前复查；停止日志在 Stop / 自然结束之间去重，显式 Stop 在返回前请求发布，不等待路由操作退出。已开始调用的日志回调不强行中断。
+- 修复后本地 `go test -race ./internal/guiapp/monitoring -count=100 -timeout=180s` 通过，含停止不阻塞慢路由及旧任务不覆盖新运行的测试；第三轮原生 CI 待记录。
+- 交互式桌面验收：用户确认暂时没有桌面测试环境，全部保留为待执行。
 - 真实断网 / 恢复：尚未执行，仅限具有快照和控制台的隔离虚拟机。
 
 ## 桌面验收矩阵

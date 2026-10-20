@@ -28,6 +28,7 @@ type monitorRun struct {
 	ctx              context.Context
 	cancel           context.CancelFunc
 	done             chan struct{}
+	stopLogged       atomic.Bool
 	localHandled     bool
 	proxyUnavailable bool
 	pending          *iproute.DisconnectTask
@@ -114,6 +115,7 @@ func (m *Manager) Stop() bool {
 	run.cancel()
 	run.health.Stop()
 	m.notifyHealth(run)
+	m.logStopped(run)
 	return true
 }
 
@@ -186,7 +188,7 @@ func (m *Manager) run(run *monitorRun, cfg *config.Config) {
 		return
 	}
 
-	m.writeLog("INFO", fmt.Sprintf("Monitoring started, interval=%ds, regions=%v", cfg.Interval, cfg.Regions))
+	m.writeRunLog(run, "INFO", fmt.Sprintf("Monitoring started, interval=%ds, regions=%v", cfg.Interval, cfg.Regions))
 	ticker := time.NewTicker(m.tickDuration(cfg.Interval))
 	defer ticker.Stop()
 
@@ -227,11 +229,11 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 			cancel()
 			if err != nil {
 				run.health.SetDisconnect("failed", err, time.Time{})
-				m.writeLog("ERROR", "Read pending disconnect failed: "+err.Error())
+				m.writeRunLog(run, "ERROR", "Read pending disconnect failed: "+err.Error())
 			}
 			run.pending, run.pendingLoaded = pending, true
 			if pending != nil {
-				m.writeLog("WARN", "Resuming saved disconnect after checking its route/network scope")
+				m.writeRunLog(run, "WARN", "Resuming saved disconnect after checking its route/network scope")
 			}
 		}
 		if run.pending != nil {
@@ -261,22 +263,25 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 	}
 	run.health.CompleteCheck(err)
 	m.notifyHealth(run)
+	if !m.isCurrent(run) {
+		return false
+	}
 	if err != nil {
 		if errors.Is(err, ipchecker.ErrProxyUnavailable) {
 			if !run.proxyUnavailable {
-				m.writeLog("WARN", fmt.Sprintf("Proxy unavailable; waiting for it to return: %v", err))
+				m.writeRunLog(run, "WARN", fmt.Sprintf("Proxy unavailable; waiting for it to return: %v", err))
 				run.proxyUnavailable = true
 			}
 			return false
 		}
-		m.writeLog("ERROR", fmt.Sprintf("Check failed via %s [state=%s]: %v", fetcherName, monitorcore.FailureKind(err), err))
+		m.writeRunLog(run, "ERROR", fmt.Sprintf("Check failed via %s [state=%s]: %v", fetcherName, monitorcore.FailureKind(err), err))
 		return false
 	}
 	if run.proxyUnavailable {
 		if result.Proxy != nil && result.Proxy.Enabled {
-			m.writeLog("INFO", "Proxy connection restored")
+			m.writeRunLog(run, "INFO", "Proxy connection restored")
 		} else {
-			m.writeLog("INFO", "Exit IP query resumed without an explicit proxy")
+			m.writeRunLog(run, "INFO", "Exit IP query resumed without an explicit proxy")
 		}
 		run.proxyUnavailable = false
 	}
@@ -285,11 +290,11 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 	location := result.LocationTag()
 	if !result.IsLocal {
 		run.localHandled = false
-		m.writeLog("INFO", fmt.Sprintf("Exit outside monitored regions api[%s] area[%s] ip[%s] path[%s]", fetcherName, location, ip, result.PathTag()))
+		m.writeRunLog(run, "INFO", fmt.Sprintf("Exit outside monitored regions api[%s] area[%s] ip[%s] path[%s]", fetcherName, location, ip, result.PathTag()))
 		return false
 	}
 
-	m.writeLog("WARN", fmt.Sprintf("Local exit detected api[%s] area[%s] ip[%s] path[%s]", fetcherName, location, ip, result.PathTag()))
+	m.writeRunLog(run, "WARN", fmt.Sprintf("Local exit detected api[%s] area[%s] ip[%s] path[%s]", fetcherName, location, ip, result.PathTag()))
 	if run.localHandled {
 		return false
 	}
@@ -334,7 +339,7 @@ func (m *Manager) performRouteAction(run *monitorRun, validate func(context.Cont
 			}
 			run.nextRetry = time.Now().Add(run.retryDelay)
 			run.health.SetDisconnect("pending", routeErr, run.nextRetry)
-			m.writeLog("WARN", fmt.Sprintf("Disconnect pending; retry after %s; exit checks continue", run.retryDelay))
+			m.writeRunLog(run, "WARN", fmt.Sprintf("Disconnect pending; retry after %s; exit checks continue", run.retryDelay))
 		} else {
 			run.retryDelay, run.nextRetry = 0, time.Time{}
 			if errors.Is(routeErr, iproute.ErrDisconnectObsolete) {
@@ -345,9 +350,9 @@ func (m *Manager) performRouteAction(run *monitorRun, validate func(context.Cont
 		}
 		m.notifyHealth(run)
 		if errors.Is(routeErr, iproute.ErrDisconnectObsolete) {
-			m.writeLog("INFO", "Saved disconnect is obsolete; exit checks continue")
+			m.writeRunLog(run, "INFO", "Saved disconnect is obsolete; exit checks continue")
 		} else {
-			m.writeLog("ERROR", fmt.Sprintf("Remove default route failed: %v", routeErr))
+			m.writeRunLog(run, "ERROR", fmt.Sprintf("Remove default route failed: %v", routeErr))
 		}
 		return false
 	}
@@ -357,7 +362,7 @@ func (m *Manager) performRouteAction(run *monitorRun, validate func(context.Cont
 	run.health.SetDisconnect("completed", nil, time.Time{})
 	m.notifyHealth(run)
 	if message != "" {
-		m.writeLog("WARN", message)
+		m.writeRunLog(run, "WARN", message)
 	}
 	return true
 }
@@ -365,6 +370,20 @@ func (m *Manager) performRouteAction(run *monitorRun, validate func(context.Cont
 func (m *Manager) writeLog(level, message string) {
 	if m.logf != nil {
 		m.logf(level, message)
+	}
+}
+
+// Gate publications without taking the route-action lock: Stop must remain
+// responsive even while an OS route operation is still unwinding.
+func (m *Manager) writeRunLog(run *monitorRun, level, message string) {
+	if m.active.Load() == run && run.ctx.Err() == nil {
+		m.writeLog(level, message)
+	}
+}
+
+func (m *Manager) logStopped(run *monitorRun) {
+	if m.active.Load() == run && run.stopLogged.CompareAndSwap(false, true) {
+		m.writeLog("INFO", "Monitoring stopped")
 	}
 }
 
@@ -440,6 +459,7 @@ func (m *Manager) removeRouteForRun(run *monitorRun, validate func(context.Conte
 func (m *Manager) finishRun(run *monitorRun) {
 	run.cancel()
 	run.health.Stop()
+	m.logStopped(run)
 	m.mu.Lock()
 	wasCurrent := m.current == run
 	if wasCurrent {
@@ -448,9 +468,6 @@ func (m *Manager) finishRun(run *monitorRun) {
 		m.active.CompareAndSwap(run, nil)
 	}
 	m.mu.Unlock()
-	if wasCurrent {
-		m.writeLog("INFO", "Monitoring stopped")
-	}
 	close(run.done)
 }
 
