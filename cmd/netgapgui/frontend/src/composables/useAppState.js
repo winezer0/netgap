@@ -75,7 +75,12 @@ async function removeRegion(region) {
 }
 
 async function startMonitoring() {
-  mergeState(await backend.startMonitoring())
+  try {
+    mergeState(await backend.startMonitoring())
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    useNotification().addNotification(`${t('startMonitoringFailed')}: ${message}`, 'error', 6000)
+  }
 }
 
 async function stopMonitoring() {

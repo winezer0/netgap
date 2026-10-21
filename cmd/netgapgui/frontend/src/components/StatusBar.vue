@@ -40,6 +40,10 @@ const failureText = (kind) => props.translate(`failure_${kind}`)
     <span v-if="health.observationOnly" class="healthDetail userText" role="status">
       {{ translate('healthObservationOnlyHint') }}
     </span>
+    <span v-if="running && health.disconnectState === 'suspended' && health.disconnectFailure === 'permission'"
+      class="healthDetail userText" role="status">
+      {{ translate('healthPermissionLimitedHint') }}
+    </span>
     <span class="healthDetail">
       {{ translate('healthLastAttempt') }} {{ timeText(health.lastAttemptAt) }}
       · {{ translate('healthLastSuccess') }} {{ timeText(health.lastSuccessAt) }}

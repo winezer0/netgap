@@ -29,6 +29,7 @@ func (s *Service) StartMonitoring() (*ViewState, error) {
 		RemoveRouteOnMatch: settings.RemoveRouteOnMatch,
 	}
 	if err := s.monitor.Start(cfg); err != nil {
+		s.writeLog("ERROR", "Monitoring failed to start: "+err.Error())
 		return nil, err
 	}
 	s.writeLog("INFO", fmt.Sprintf("Monitoring started with %d regions, %d APIs", len(settings.Regions), len(settings.APIEnabled)))

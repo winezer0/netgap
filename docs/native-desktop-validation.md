@@ -35,6 +35,6 @@ CI URL / 提交号 / Artifact：
 ## 部署注意事项
 
 - Linux CLI/GUI 不再附带独立代理助手，PAC/WPAD 降级直查系统路由出口，仅告警；GNOME 需要系统 gsettings/桌面 schema，KDE 读取 XDG kioslaverc 固定代理配置。Ubuntu 24.04 GUI 仍使用 WebKit 4.1 和 `webkit2_41` 构建标签，详见 [Linux 支持边界](linux-proxy-support.md)。
-- GUI 默认开启自动删除路由。普通用户应先关闭该选项再启动监控；Linux/macOS 修改路由要求有效 root 权限，当前没有自动提权功能。
+- GUI 默认开启自动删除路由。普通用户可直接启动监控，核对运行状态、正常告警、权限不足暂停提示及原设置保留；切换偏好不得解除权限限制或续作断网任务。Linux/macOS 修改路由要求有效 root 权限，当前没有自动提权功能。
 - `--recovery-check --recovery-dir <原快照目录>` 只预检权限、快照格式和恢复存储，不修改路由；实际恢复仍需校验网络绑定、冲突和有效期。
 - 删除默认路由不是完整网络隔离：直连网段、更具体的路由、VPN `/1` 路由和系统重新生成的路由仍可能保持连接。

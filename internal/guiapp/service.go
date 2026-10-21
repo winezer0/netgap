@@ -127,8 +127,14 @@ func (s *Service) SaveSettings(input *configstore.Settings) (*ViewState, error) 
 	if normalized.RemoveRouteOnMatch {
 		ctx, cancel := context.WithTimeout(s.operationContext(), 15*time.Second)
 		defer cancel()
-		if err := iproute.ProtectionPreflight(ctx, false); err != nil {
+		admin := iproute.CheckAdminPermissionContext(ctx)
+		if err := ctx.Err(); err != nil {
 			return nil, err
+		}
+		if admin {
+			if err := iproute.ProtectionPreflight(ctx, false); err != nil {
+				return nil, err
+			}
 		}
 	}
 	s.mu.Lock()

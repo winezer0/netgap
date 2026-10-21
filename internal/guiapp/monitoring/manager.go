@@ -25,17 +25,18 @@ type RemoveRouteFunc func() (string, error)
 
 // Each run owns its cancellation and check state, including while it is stopping.
 type monitorRun struct {
-	ctx              context.Context
-	cancel           context.CancelFunc
-	done             chan struct{}
-	stopLogged       atomic.Bool
-	localHandled     bool
-	proxyUnavailable bool
-	pending          *iproute.DisconnectTask
-	pendingLoaded    bool
-	nextRetry        time.Time
-	retryDelay       time.Duration
-	health           monitorcore.HealthTracker
+	ctx               context.Context
+	cancel            context.CancelFunc
+	done              chan struct{}
+	stopLogged        atomic.Bool
+	localHandled      bool
+	proxyUnavailable  bool
+	permissionLimited bool
+	pending           *iproute.DisconnectTask
+	pendingLoaded     bool
+	nextRetry         time.Time
+	retryDelay        time.Duration
+	health            monitorcore.HealthTracker
 }
 
 // Manager 表示可启动和停止的监测管理器。
@@ -87,18 +88,28 @@ func (m *Manager) Start(cfg *config.Config) error {
 	if m.check == nil {
 		return errors.New("monitor check function is nil")
 	}
-	if cfg.RemoveRouteOnMatch && m.removeRoute == nil {
+	permissionLimited := false
+	if m.removeRoute == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), monitorcore.DisconnectAttemptTimeout)
 		defer cancel()
-		if err := iproute.ProtectionPreflight(ctx, false); err != nil {
+		permissionLimited = !iproute.CheckAdminPermissionContext(ctx)
+		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if cfg.RemoveRouteOnMatch && !permissionLimited {
+			if err := iproute.ProtectionPreflight(ctx, false); err != nil {
+				return err
+			}
 		}
 	}
 	m.removeRouteOnMatch.Store(cfg.RemoveRouteOnMatch)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	run := &monitorRun{ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	run := &monitorRun{ctx: ctx, cancel: cancel, done: make(chan struct{}), permissionLimited: permissionLimited}
 	run.health.Start(cfg.Interval)
+	if cfg.RemoveRouteOnMatch && permissionLimited {
+		run.health.SetDisconnect("suspended", monitorcore.ErrRoutePermission, time.Time{})
+	}
 	m.current = run
 	m.active.Store(run)
 	m.healthRun.Store(run)
@@ -172,7 +183,18 @@ func (m *Manager) Running() bool {
 
 // SetRemoveRouteOnMatch updates automatic route removal without restarting monitoring.
 func (m *Manager) SetRemoveRouteOnMatch(enabled bool) {
-	m.removeRouteOnMatch.Store(enabled)
+	previous := m.removeRouteOnMatch.Swap(enabled)
+	if run := m.active.Load(); run != nil && run.ctx.Err() == nil && run.permissionLimited {
+		if enabled {
+			run.health.SetDisconnect("suspended", monitorcore.ErrRoutePermission, time.Time{})
+			if !previous {
+				m.writeRunLog(run, "WARN", permissionLimitedWarning)
+			}
+		} else if health := run.health.Snapshot(); health.DisconnectState == "suspended" && health.DisconnectFailure == "permission" {
+			run.health.SetDisconnect("idle", nil, time.Time{})
+		}
+		m.notifyHealth(run)
+	}
 	if !enabled {
 		m.actionMu.Lock()
 		if m.actionCancel != nil {
@@ -189,6 +211,9 @@ func (m *Manager) run(run *monitorRun, cfg *config.Config) {
 	}
 
 	m.writeRunLog(run, "INFO", fmt.Sprintf("Monitoring started, interval=%ds, regions=%v", cfg.Interval, cfg.Regions))
+	if run.permissionLimited && m.removeRouteOnMatch.Load() {
+		m.writeRunLog(run, "WARN", permissionLimitedWarning)
+	}
 	ticker := time.NewTicker(m.tickDuration(cfg.Interval))
 	defer ticker.Stop()
 
@@ -222,6 +247,9 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 			run.health.SetDisconnect("suspended", nil, time.Time{})
 		}
 		run.pending, run.pendingLoaded = nil, false
+	} else if run.permissionLimited {
+		// Keep saved tasks untouched; this process may only observe and alert.
+		run.health.SetDisconnect("suspended", monitorcore.ErrRoutePermission, time.Time{})
 	} else if m.removeRoute == nil {
 		if !run.pendingLoaded {
 			ctx, cancel := context.WithTimeout(run.ctx, monitorcore.DisconnectAttemptTimeout)
@@ -281,6 +309,9 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 			run.health.SetDisconnect("idle", nil, time.Time{})
 		}
 	}
+	if run.permissionLimited && m.removeRouteOnMatch.Load() {
+		run.health.SetDisconnect("suspended", monitorcore.ErrRoutePermission, time.Time{})
+	}
 	m.notifyHealth(run)
 	if !m.isCurrent(run) {
 		return false
@@ -320,7 +351,7 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 	if run.localHandled {
 		return false
 	}
-	if !m.removeRouteOnMatch.Load() {
+	if !m.automaticRouteAllowed(run) {
 		return false
 	}
 	if hadPending {
@@ -425,7 +456,7 @@ func (m *Manager) isCurrent(run *monitorRun) bool {
 func (m *Manager) removeRouteForRun(run *monitorRun, validate func(context.Context) error) (string, error, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.current != run || run.ctx.Err() != nil || !m.removeRouteOnMatch.Load() {
+	if m.current != run || run.ctx.Err() != nil || !m.automaticRouteAllowed(run) {
 		return "", nil, false
 	}
 	actionCtx, cancel := context.WithTimeout(run.ctx, monitorcore.DisconnectAttemptTimeout)
@@ -468,7 +499,7 @@ func (m *Manager) removeRouteForRun(run *monitorRun, validate func(context.Conte
 				return "All IPv4/IPv6 default routes removed; complete recovery snapshot saved", nil
 			}
 			guard := func(ctx context.Context) error {
-				if !m.removeRouteOnMatch.Load() {
+				if !m.automaticRouteAllowed(run) {
 					return errors.New("automatic route removal was disabled")
 				}
 				if validate != nil {
@@ -509,6 +540,12 @@ func defaultRemoveRoute() (string, error) {
 		return "", err
 	}
 	return "All IPv4/IPv6 default routes removed; complete recovery snapshot saved", nil
+}
+
+const permissionLimitedWarning = "Monitoring is running with alerts only; automatic disconnection is suspended because administrator/root permission is required. Saved settings and recovery records are retained."
+
+func (m *Manager) automaticRouteAllowed(run *monitorRun) bool {
+	return m.removeRouteOnMatch.Load() && !run.permissionLimited
 }
 
 func cloneConfig(cfg *config.Config) *config.Config {
