@@ -49,7 +49,7 @@ def safe_members(names):
 
 def inspect(path, platform, gui):
     if platform.startswith("ubuntu"):
-        names = ["netgapgui" if gui else "netgap", "netgap-gio-proxy"]
+        names = ["netgapgui" if gui else "netgap"]
     elif platform.startswith("macos"):
         names = ["netgapgui.app/Contents/MacOS/netgapgui"] if gui else ["netgap"]
     else:

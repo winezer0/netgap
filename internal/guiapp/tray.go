@@ -8,10 +8,10 @@ import (
 
 // TrayController 表示系统托盘控制器。
 type TrayController struct {
-	service *Service
-	icon    []byte
-	start   func()
-	end     func()
+	service   *Service
+	icon      []byte
+	start     func()
+	end       func()
 	startOnce sync.Once
 	stopOnce  sync.Once
 }
@@ -56,6 +56,7 @@ func (t *TrayController) onReady() {
 	systray.SetTooltip(appName)
 
 	openItem := systray.AddMenuItem("打开主界面", "Open main window")
+	lastAlertItem := systray.AddMenuItem("查看最近提醒", "Show the latest alert")
 	systray.AddSeparator()
 	removeItem := systray.AddMenuItem("移除默认路由", "Remove default route")
 	restoreItem := systray.AddMenuItem("恢复默认路由", "Restore default route")
@@ -70,6 +71,8 @@ func (t *TrayController) onReady() {
 			select {
 			case <-openItem.ClickedCh:
 				t.service.ShowWindow()
+			case <-lastAlertItem.ClickedCh:
+				t.service.ShowLastAlert()
 			case <-removeItem.ClickedCh:
 				_, _ = t.service.RemoveDefaultRoute()
 				t.service.emitState()

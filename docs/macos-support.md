@@ -38,7 +38,7 @@ CGO_ENABLED=1 go build -o netgap ./cmd/netgap
 
 # macOS 主机上构建 amd64 + arm64 通用 GUI
 cd cmd/netgapgui
-CGO_ENABLED=1 wails build -platform darwin/universal
+CGO_ENABLED=1 node build.mjs -platform darwin/universal
 open build/bin/netgapgui.app
 ```
 

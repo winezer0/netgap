@@ -6,16 +6,22 @@ const props = defineProps({
   language: { type: String, required: true },
   closeAction: { type: String, required: true },
   removeRouteOnMatch: { type: Boolean, required: true },
+  notificationPopup: { type: Boolean, required: true },
   translate: { type: Function, required: true },
 })
 
 const emit = defineEmits(['cancel', 'save'])
-const draft = reactive({ closeAction: 'tray', removeRouteOnMatch: true })
+const draft = reactive({
+  closeAction: 'tray',
+  removeRouteOnMatch: true,
+  notificationPopup: true,
+})
 
 watch(() => props.visible, (visible) => {
   if (!visible) return
   draft.closeAction = props.closeAction
   draft.removeRouteOnMatch = props.removeRouteOnMatch
+  draft.notificationPopup = props.notificationPopup
 }, { immediate: true })
 
 const save = () => emit('save', { ...draft })
@@ -45,6 +51,18 @@ const save = () => emit('save', { ...draft })
           <option :value="false">{{ translate('disabled') }}</option>
         </select>
       </label>
+
+      <div class="settingRow notificationRow">
+        <span>{{ translate('networkMatchNotification') }}</span>
+        <label class="settingChoice">
+          <input
+            v-model="draft.notificationPopup"
+            type="checkbox"
+            :aria-label="translate('showPopupNotification')"
+          />
+          <span>{{ translate('showPopupNotification') }}</span>
+        </label>
+      </div>
 
       <div class="settingsActions">
         <button class="secondaryBtn" type="button" @click="emit('cancel')">
@@ -103,6 +121,20 @@ select {
   border-radius: 6px;
   background: #0f141a;
   color: #eef5ff;
+}
+
+.settingChoice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #c8d5e7;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.settingChoice input {
+  margin: 0;
+  accent-color: #3b82f6;
 }
 
 .settingsActions {

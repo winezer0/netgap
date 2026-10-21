@@ -12,6 +12,7 @@ const state = reactive({
   customApiUrl: '',
   closeAction: 'tray',
   removeRouteOnMatch: true,
+  notificationPopup: true,
   logs: [],
   isAdmin: false,
   running: false,
@@ -39,6 +40,7 @@ function mergeState(payload) {
   state.customApiUrl = payload.customApiUrl ?? state.customApiUrl
   state.closeAction = payload.closeAction ?? state.closeAction
   state.removeRouteOnMatch = payload.removeRouteOnMatch ?? state.removeRouteOnMatch
+  state.notificationPopup = payload.notificationPopup ?? state.notificationPopup
   state.logs = payload.logs ?? state.logs
   state.isAdmin = payload.isAdmin ?? state.isAdmin
   if (payload.health) mergeHealth(payload.health)
@@ -60,6 +62,7 @@ async function saveSettings(overrides = {}) {
     customApiUrl: state.customApiUrl,
     closeAction: overrides.closeAction ?? state.closeAction,
     removeRouteOnMatch: overrides.removeRouteOnMatch ?? state.removeRouteOnMatch,
+    notificationPopup: overrides.notificationPopup ?? state.notificationPopup,
   }))
 }
 

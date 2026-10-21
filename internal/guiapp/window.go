@@ -10,6 +10,7 @@ func (s *Service) ShowWindow() {
 	runtime.WindowShow(s.ctx)
 	runtime.WindowUnminimise(s.ctx)
 	runtime.WindowCenter(s.ctx)
+	s.windowHidden.Store(false)
 	s.emitState()
 }
 
@@ -26,6 +27,7 @@ func (s *Service) HideToTray() {
 	if s.ctx == nil {
 		return
 	}
+	s.windowHidden.Store(true)
 	runtime.WindowHide(s.ctx)
 }
 

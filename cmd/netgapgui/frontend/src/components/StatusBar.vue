@@ -32,10 +32,13 @@ const failureText = (kind) => props.translate(`failure_${kind}`)
       {{ translate('runningState') }}
       <strong>{{ running ? translate('running') : translate('notRunning') }}</strong>
     </span>
-    <span class="healthDetail" :class="{ userText: stale || health.queryFailure }" role="status" aria-live="polite">
+    <span class="healthDetail" :class="{ userText: stale || health.queryFailure || health.observationOnly }" role="status" aria-live="polite">
       {{ translate('healthStatus') }} {{ translate(`health_${phase}`) }}
       · {{ translate('healthFailures') }} {{ health.consecutiveFailures || 0 }}
       <template v-if="health.queryFailure"> · {{ failureText(health.queryFailure) }}</template>
+    </span>
+    <span v-if="health.observationOnly" class="healthDetail userText" role="status">
+      {{ translate('healthObservationOnlyHint') }}
     </span>
     <span class="healthDetail">
       {{ translate('healthLastAttempt') }} {{ timeText(health.lastAttemptAt) }}

@@ -9,6 +9,8 @@ import {
   ScreenGetAll,
 } from '../../wailsjs/runtime/runtime'
 
+const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
+
 defineProps({
   language: { type: String, required: true },
   closeAction: { type: String, required: true },
@@ -67,7 +69,10 @@ const toggleMaximise = async () => {
 <template>
   <header class="titleBar">
     <img class="titleIcon" :src="appIcon" alt="" aria-hidden="true" draggable="false" />
-    <div class="titleText">netgapgui</div>
+    <div class="titleText">
+      <span>netgapgui</span>
+      <span class="appVersion" :title="`Version ${appVersion}`">{{ appVersion }}</span>
+    </div>
     <button class="langBtn" @click="$emit('toggle-language')">
       {{ language === 'zh' ? 'ZH' : 'EN' }}
     </button>

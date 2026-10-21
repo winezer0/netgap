@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	logging "github.com/winezer0/zaplogs"
@@ -37,6 +38,8 @@ type Service struct {
 
 	alertMu       sync.Mutex
 	lastLocalExit time.Time
+	lastAlert     string
+	windowHidden  atomic.Bool
 }
 
 // NewService 创建 GUI 服务对象。
@@ -75,6 +78,7 @@ func NewService() (*Service, error) {
 // Startup 记录 Wails 上下文并初始化日志。
 func (s *Service) Startup(ctx context.Context) {
 	s.ctx = ctx
+	s.windowHidden.Store(false)
 	s.writeLog("INFO", "GUI application started")
 }
 
@@ -106,6 +110,7 @@ func (s *Service) State() *ViewState {
 		CustomAPIURL:       settings.CustomAPIURL,
 		CloseAction:        settings.CloseAction,
 		RemoveRouteOnMatch: settings.RemoveRouteOnMatch,
+		NotificationPopup:  settings.NotificationPopup,
 		Logs:               s.logs.List(),
 		ConfigPath:         s.store.Path(),
 		IsAdmin:            isAdmin(),

@@ -12,6 +12,7 @@ type ViewState struct {
 	CustomAPIURL       string         `json:"customApiUrl"`
 	CloseAction        string         `json:"closeAction"`
 	RemoveRouteOnMatch bool           `json:"removeRouteOnMatch"`
+	NotificationPopup  bool           `json:"notificationPopup"`
 	Logs               []string       `json:"logs"`
 	ConfigPath         string         `json:"configPath"`
 	IsAdmin            bool           `json:"isAdmin"`

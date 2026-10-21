@@ -27,6 +27,7 @@ type Health struct {
 	LastSuccessAt       int64  `json:"lastSuccessAt"`
 	ConsecutiveFailures uint64 `json:"consecutiveFailures"`
 	QueryFailure        string `json:"queryFailure"`
+	ObservationOnly     string `json:"observationOnly"`
 	DisconnectState     string `json:"disconnectState"`
 	DisconnectFailure   string `json:"disconnectFailure"`
 	NextRetryAt         int64  `json:"nextRetryAt"`
@@ -62,10 +63,15 @@ func (h *HealthTracker) BeginCheck(interval int) {
 }
 
 func (h *HealthTracker) CompleteCheck(err error) {
+	h.CompleteObservation(err, "")
+}
+
+func (h *HealthTracker) CompleteObservation(err error, reason string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.data.LastCompletedAt = time.Now().UnixMilli()
 	h.data.Revision++
+	h.data.ObservationOnly = reason
 	if err != nil {
 		h.data.Phase = "degraded"
 		h.data.QueryFailure = FailureKind(err)
@@ -73,6 +79,9 @@ func (h *HealthTracker) CompleteCheck(err error) {
 		return
 	}
 	h.data.Phase = "healthy"
+	if reason != "" {
+		h.data.Phase = "observation_only"
+	}
 	h.data.LastSuccessAt = h.data.LastCompletedAt
 	h.data.QueryFailure = ""
 	h.data.ConsecutiveFailures = 0
@@ -150,7 +159,7 @@ func (h Health) String() string {
 		}
 		return time.UnixMilli(value).Format(time.RFC3339)
 	}
-	return fmt.Sprintf("phase=%s last_attempt=%s last_success=%s consecutive_failures=%d query_error=%s disconnect=%s route_error=%s next_retry=%s",
+	return fmt.Sprintf("phase=%s last_attempt=%s last_success=%s consecutive_failures=%d query_error=%s disconnect=%s route_error=%s next_retry=%s observation_only=%s",
 		h.Phase, stamp(h.LastAttemptAt), stamp(h.LastSuccessAt), h.ConsecutiveFailures,
-		h.QueryFailure, h.DisconnectState, h.DisconnectFailure, stamp(h.NextRetryAt))
+		h.QueryFailure, h.DisconnectState, h.DisconnectFailure, stamp(h.NextRetryAt), h.ObservationOnly)
 }

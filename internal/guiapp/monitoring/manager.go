@@ -261,7 +261,26 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 	if err == nil && (result == nil || result.IPInfo == nil) {
 		err = errors.New("exit IP query returned no location information")
 	}
-	run.health.CompleteCheck(err)
+	previous := run.health.Snapshot()
+	reason := ""
+	if result != nil {
+		reason = result.ObservationOnly
+	}
+	if err != nil && reason == "" {
+		reason = previous.ObservationOnly
+	}
+	run.health.CompleteObservation(err, reason)
+	if reason != "" {
+		run.health.SetDisconnect("suspended", nil, time.Time{})
+		if previous.ObservationOnly == "" {
+			m.writeRunLog(run, "WARN", detector.ObservationWarning)
+		}
+	} else if err == nil && previous.ObservationOnly != "" {
+		m.writeRunLog(run, "INFO", "Normal proxy monitoring resumed")
+		if run.pending == nil && previous.DisconnectState == "suspended" {
+			run.health.SetDisconnect("idle", nil, time.Time{})
+		}
+	}
 	m.notifyHealth(run)
 	if !m.isCurrent(run) {
 		return false
@@ -295,6 +314,9 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 	}
 
 	m.writeRunLog(run, "WARN", fmt.Sprintf("Local exit detected api[%s] area[%s] ip[%s] path[%s]", fetcherName, location, ip, result.PathTag()))
+	if result.ObservationOnly != "" {
+		return false
+	}
 	if run.localHandled {
 		return false
 	}
@@ -304,7 +326,7 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 	if hadPending {
 		return false
 	}
-	return m.performRouteAction(run, result.ValidateCurrent)
+	return m.performRouteAction(run, result.ProtectionGuard)
 }
 
 func (m *Manager) performRouteAction(run *monitorRun, validate func(context.Context) error) bool {
@@ -317,6 +339,11 @@ func (m *Manager) performRouteAction(run *monitorRun, validate func(context.Cont
 		} else {
 			run.health.SetDisconnect("idle", nil, time.Time{})
 		}
+		m.notifyHealth(run)
+		return false
+	}
+	if errors.Is(routeErr, detector.ErrObservationOnly) {
+		run.health.SetDisconnect("suspended", nil, time.Time{})
 		m.notifyHealth(run)
 		return false
 	}
@@ -414,6 +441,9 @@ func (m *Manager) removeRouteForRun(run *monitorRun, validate func(context.Conte
 		m.actionCancel = nil
 		m.actionMu.Unlock()
 	}()
+	if err := detector.AutomaticProtectionError(actionCtx); err != nil {
+		return "", err, true
+	}
 	if validate != nil {
 		if err := validate(actionCtx); err != nil {
 			return "", err, true

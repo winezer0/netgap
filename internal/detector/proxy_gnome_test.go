@@ -154,7 +154,7 @@ func TestGnomeCredentialsAndFingerprint(t *testing.T) {
 
 func TestGnomeInvalidSettingsFailClosed(t *testing.T) {
 	for _, settings := range []map[string]string{
-		{"mode": "'auto'"}, {"mode": "manual"}, {"use-same-proxy": "1"},
+		{"mode": "'unknown'"}, {"mode": "manual"}, {"use-same-proxy": "1"},
 		{"https.port": "65536"}, {"http.port": "-1"}, {"http.host": "'host/path'"},
 		{"http.host": "'[::1'"}, {"ignore-hosts": "['unterminated]"}, {"ignore-hosts": "['host:bad']"},
 		{"http.authentication-user": "'unterminated", "http.use-authentication": "true"},

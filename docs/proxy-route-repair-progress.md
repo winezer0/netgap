@@ -5,7 +5,7 @@
 ## 代理检测与系统选路
 
 - 每个 API 及重定向目标按目标 URL 解析系统代理规则，候选顺序遵循系统配置。只有系统规则明确包含 DIRECT 时才使用直连；配置读取或解析失败会返回错误。
-- Linux 通过相邻的 `netgap-gio-proxy` 调用 GIO/libproxy。助手输出有大小上限，缺少依赖或解析失败不会静默退回环境代理。
+- Linux 已移除独立 GIO 助手，使用 GNOME gsettings 快照与 KDE XDG kioslaverc 固定代理解析；自动代理模式、未知来源或解析失败明确报错，不静默回退环境代理。详见 [Linux 固定代理说明](linux-proxy-support.md)。
 - Windows 读取当前用户系统配置；macOS 使用 CFNetwork。Linux 桌面代理、macOS 网络状态由平台后端读取。
 - 查询、配置快照和路由校验沿调用上下文执行。不能取消的原生同步 API 在返回后检查结果是否过期。
 

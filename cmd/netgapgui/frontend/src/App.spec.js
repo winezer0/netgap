@@ -25,6 +25,7 @@ const makeState = (closeAction = 'tray') => reactive({
   customApiUrl: '',
   closeAction,
   removeRouteOnMatch: true,
+  notificationPopup: true,
   logs: [],
   isAdmin: false,
   running: false,
@@ -66,7 +67,11 @@ describe('App settings and close behavior', () => {
     await wrapper.getComponent(TitleBar).vm.$emit('open-settings')
     expect(wrapper.getComponent(SettingsDialog).props('visible')).toBe(true)
 
-    const preferences = { closeAction: 'quit', removeRouteOnMatch: false }
+    const preferences = {
+      closeAction: 'quit',
+      removeRouteOnMatch: false,
+      notificationPopup: false,
+    }
     await wrapper.getComponent(SettingsDialog).vm.$emit('save', preferences)
     await flushPromises()
 

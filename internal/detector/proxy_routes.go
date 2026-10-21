@@ -24,7 +24,8 @@ type proxyRules struct {
 	autoDetect, environment bool
 	native                  bool
 	gnome                   *gnomeProxyRules
-	gioState                string
+	kde                     *kdeProxyRules
+	observationState        string
 }
 
 // Explicit fields keep fingerprints independent of pointer addresses.
@@ -36,7 +37,13 @@ func (r *proxyRules) fingerprint() string {
 	if r.gnome != nil {
 		state = r.gnome.state
 	}
-	return fmt.Sprintf("%q|%q|%q|%t|%t|%t|%s|%s", r.servers, r.bypass, r.pacURL, r.autoDetect, r.environment, r.native, state, r.gioState)
+	if r.kde != nil {
+		state = r.kde.state
+	}
+	if r.observationState != "" {
+		state = r.observationState
+	}
+	return fmt.Sprintf("%q|%q|%q|%t|%t|%t|%s", r.servers, r.bypass, r.pacURL, r.autoDetect, r.environment, r.native, state)
 }
 
 func (p *ProxyConfig) UsesURLRules() bool { return p != nil && p.rules != nil }
@@ -60,8 +67,8 @@ func (p *ProxyConfig) Routes(ctx context.Context, target *url.URL) (routes []Pro
 	}
 	if p.rules != nil {
 		r := p.rules
-		if r.gioState != "" {
-			return resolveGIOProxy(ctx, r.gioState, target)
+		if r.kde != nil {
+			return r.kde.routes(ctx, target)
 		}
 		if r.gnome != nil {
 			return r.gnome.routes(ctx, target)

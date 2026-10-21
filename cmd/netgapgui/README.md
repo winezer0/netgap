@@ -1,6 +1,6 @@
 # NetGap 图形界面版
 
-Linux 发行包新增同目录助手 `netgap-gio-proxy`；部署时保留助手并安装 GIO/glib-networking 及相应 PAC 模块。自动保护启用/启动、手动删除/恢复前会检查权限和恢复存储；失败会显示恢复快照路径。CLI 可通过 `--recovery-dir <GUI 数据目录>` 使用同一份快照。详见 [本批次记录](../../docs/gio-watch-recovery-results.md)。
+Linux 发行包不再携带独立代理助手：支持 GNOME/KDE 无代理、固定代理和绕过规则，PAC/WPAD 模式降级为系统路由直查、仅告警，详见 [Linux 固定代理说明](../../docs/linux-proxy-support.md)。自动保护启用/启动、手动删除/恢复前会检查权限和恢复存储；失败会显示恢复快照路径。CLI 可通过 `--recovery-dir <GUI 数据目录>` 使用同一份快照。
 
 图形界面版以窗口方式运行代理出口 IP 监控。界面可配置目标区域、检测间隔、IP 查询 API 和自定义 API 地址，启动或停止监控，查看运行日志，也可查询代理配置和默认路由，或手动移除、恢复默认路由。
 
@@ -10,8 +10,10 @@ Linux 发行包新增同目录助手 `netgap-gio-proxy`；部署时保留助手�
 
 ```powershell
 cd cmd/netgapgui
-wails build
+node build.mjs
 ```
+
+构建脚本会优先使用 `VITE_APP_VERSION`，未设置时读取 Git 标签及提交信息；没有 Git 信息时显示 `dev`。该值会编入标题栏，并同步更新构建时的 Wails 产品版本元数据。
 
 在仓库根目录启动构建好的程序：
 
@@ -25,16 +27,15 @@ macOS 主机需要 Apple Command Line Tools、Wails、Node.js 和 CGO：
 
 ```sh
 cd cmd/netgapgui
-CGO_ENABLED=1 wails build -platform darwin/universal
+CGO_ENABLED=1 node build.mjs -platform darwin/universal
 open build/bin/netgapgui.app
 ```
 
 macOS 已实现系统固定代理/PAC/WPAD、网络变化检测及双栈全网卡默认路由后端，原生行为待验证，详见 [macOS 功能支持](../../docs/macos-support.md)。
 
-Linux Ubuntu 22.04/24.04 的完整 GUI 原生构建已通过。Ubuntu 24.04 使用 WebKit 4.1 开发依赖并执行 `wails build -tags webkit2_41`；Ubuntu 22.04 使用 WebKit 4.0，PAC 还需 `libproxy1-plugin-webkit`。自建发行包时，在 `wails build -clean` 完成后构建助手，避免清理步骤删除助手；以下在 `cmd/netgapgui` 目录执行：
+Linux Ubuntu 22.04/24.04 的历史完整 GUI 原生构建已通过；本次移除代理助手后的发行包需重新验收。Ubuntu 24.04 使用 WebKit 4.1 开发依赖并执行 `node build.mjs -tags webkit2_41`；Ubuntu 22.04 使用 WebKit 4.0，不再需要 PAC 模块。以下在 `cmd/netgapgui` 目录执行：
 
 ```sh
-go build -tags gio -o build/bin/netgap-gio-proxy ../netgap-gio-proxy
 ```
 
 部署时保留助手与 GUI 相邻，使用匹配目标系统的构建产物。
@@ -69,6 +70,6 @@ macOS 修改路由要求进程有效 UID 为 0，管理员组成员身份不足�
 
 完整 GUI 编译和产物上传已通过，不代表已完成启动、渲染、托盘、关闭/重开、设置持久化或健康状态展示的桌面验收。当前没有 macOS Intel/ARM 和完整 Linux GNOME/KDE 桌面测试环境；本轮 CI 也未执行 Windows GUI 交互。
 
-仍需验收代理退出/重启、PAC/WPAD 与绕过规则的实际选路、切网和快速切回、原生监听故障自愈、睡眠唤醒，以及停止/重启后的旧任务隔离。真实默认路由删除/恢复、部分失败续作、并发手动/自动动作及重启恢复仅在带快照和控制台的隔离环境执行，不在当前 WSL 测试。
+仍需验收代理退出/重启、绕过规则的实际选路、Windows/macOS PAC/WPAD、Linux 自动代理模式降级提示及自动断网暂停、切网和快速切回、原生监听故障自愈、睡眠唤醒，以及停止/重启后的旧任务隔离。真实默认路由删除/恢复、部分失败续作、并发手动/自动动作及重启恢复仅在带快照和控制台的隔离环境执行，不在当前 WSL 测试。
 
 安装包独立下载/归档核验、macOS 签名/公证及 Gatekeeper 行为尚未验收。完整优先级、依赖限制与通过标准见 [主 README 验收清单](../../README.md#验收状态与已知限制)，执行矩阵及证据模板见 [原生验证记录](../../docs/native-desktop-validation.md#桌面验收矩阵)。

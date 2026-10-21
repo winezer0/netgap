@@ -8,30 +8,42 @@ const baseProps = {
   language: 'zh',
   closeAction: 'tray',
   removeRouteOnMatch: true,
+  notificationPopup: true,
   translate,
 }
 
 describe('SettingsDialog', () => {
-  it('shows the saved defaults in two labeled selectors', () => {
+  it('shows the saved defaults in the labeled selectors', () => {
     const wrapper = mount(SettingsDialog, { props: baseProps })
-    const rows = wrapper.findAll('.settingRow')
+    const selects = wrapper.findAll('select')
 
     expect(wrapper.get('[role="dialog"]').exists()).toBe(true)
-    expect(rows).toHaveLength(2)
-    expect(rows[0].find('span').text()).toBe('closeAction')
-    expect(rows[0].get('select').element.value).toBe('tray')
-    expect(rows[1].find('span').text()).toBe('routeMatchDisconnect')
-    expect(rows[1].get('select').element.value).toBe('true')
+    expect(selects).toHaveLength(2)
+    expect(selects[0].element.value).toBe('tray')
+    expect(selects[1].element.value).toBe('true')
   })
 
-  it('emits both selected values when saved', async () => {
+  it('shows the saved network match notification preference', () => {
+    const wrapper = mount(SettingsDialog, { props: baseProps })
+
+    expect(wrapper.get('[aria-label="showPopupNotification"]').element.checked).toBe(true)
+  })
+
+  it('emits the selected values when saved', async () => {
     const wrapper = mount(SettingsDialog, { props: baseProps })
     const selects = wrapper.findAll('select')
     await selects[0].setValue('quit')
     await selects[1].setValue('false')
+    await wrapper.get('[aria-label="showPopupNotification"]').setValue(false)
     await wrapper.get('.primaryBtn').trigger('click')
 
-    expect(wrapper.emitted('save')).toEqual([[{ closeAction: 'quit', removeRouteOnMatch: false }]])
+    expect(wrapper.emitted('save')).toEqual([[
+      {
+        closeAction: 'quit',
+        removeRouteOnMatch: false,
+        notificationPopup: false,
+      },
+    ]])
   })
 
   it('cancels without saving and resets its draft when reopened', async () => {
@@ -42,8 +54,9 @@ describe('SettingsDialog', () => {
     expect(wrapper.emitted('save')).toBeUndefined()
 
     await wrapper.setProps({ visible: false })
-    await wrapper.setProps({ visible: true, closeAction: 'tray' })
+    await wrapper.setProps({ visible: true, closeAction: 'tray', notificationPopup: true })
     expect(wrapper.findAll('select')[0].element.value).toBe('tray')
+    expect(wrapper.get('[aria-label="showPopupNotification"]').element.checked).toBe(true)
   })
 
   it('cancels when the backdrop is clicked but not when the dialog is clicked', async () => {

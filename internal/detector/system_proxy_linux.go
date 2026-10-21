@@ -17,26 +17,21 @@ import (
 
 func getProxyFromSystem(ctx context.Context) *ProxyConfig {
 	desktop := os.Getenv("XDG_CURRENT_DESKTOP")
-	if desktop != "" && os.Getenv("SUDO_UID") != "" && os.Getenv("SUDO_UID") != fmt.Sprint(os.Geteuid()) {
-		p, err := gioSnapshot(ctx)
-		if err != nil {
-			return &ProxyConfig{configErr: err}
-		}
-		return p
-	}
-	gnome := false
+	gnome, kde := false, false
 	for _, name := range strings.Split(desktop, ":") {
-		if name == "GNOME" {
-			gnome = true
-		}
+		gnome = gnome || name == "GNOME"
+		kde = kde || name == "KDE"
 	}
-	if !gnome {
+	if !gnome && !kde {
 		// Installed GNOME schemas do not identify the current desktop. Only an
 		// explicitly headless process may use environment configuration alone.
 		if desktop == "" && os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" && os.Getenv("DBUS_SESSION_BUS_ADDRESS") == "" && os.Getenv("DESKTOP_SESSION") == "" {
 			return nil
 		}
-		p, err := gioSnapshot(ctx)
+		return &ProxyConfig{configErr: errors.New("unidentified desktop proxy source; Linux supports GNOME/KDE fixed proxy settings only")}
+	}
+	if kde && !gnome {
+		p, err := kdeSnapshot(ctx)
 		if err != nil {
 			return &ProxyConfig{configErr: err}
 		}
@@ -46,7 +41,7 @@ func getProxyFromSystem(ctx context.Context) *ProxyConfig {
 	// and failed reads must not masquerade as an unconfigured system proxy.
 	if _, err := exec.LookPath("gsettings"); err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
-			return &ProxyConfig{configErr: errors.New("GNOME session requires gsettings and the GIO proxy helper")}
+			return &ProxyConfig{configErr: errors.New("GNOME session requires gsettings and desktop proxy schemas")}
 		}
 		return &ProxyConfig{configErr: fmt.Errorf("locate gsettings: %w", err)}
 	}
@@ -55,16 +50,6 @@ func getProxyFromSystem(ctx context.Context) *ProxyConfig {
 	output, err := runGsettings(ctx, "list-recursively", gnomeProxySchema)
 	if err != nil {
 		return &ProxyConfig{configErr: err}
-	}
-	for _, line := range strings.Split(output, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) == 3 && fields[0] == gnomeProxySchema && fields[1] == "mode" && (fields[2] == "'auto'" || fields[2] == "\"auto\"") {
-			p, err := gioSnapshot(ctx)
-			if err != nil {
-				return &ProxyConfig{configErr: err}
-			}
-			return p
-		}
 	}
 	proxy, err := parseGnomeSnapshot(output)
 	if err != nil {
@@ -91,7 +76,7 @@ func (b *limitedSettingsOutput) Write(p []byte) (int, error) {
 }
 
 func runGsettings(ctx context.Context, args ...string) (string, error) {
-	return runSettingsHelper(ctx, "gsettings", args...)
+	return runConfiguredSettingsHelper(ctx, "gsettings", args, linuxDesktopCommand)
 }
 
 func runSettingsHelper(ctx context.Context, executable string, args ...string) (string, error) {

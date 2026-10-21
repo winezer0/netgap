@@ -27,7 +27,7 @@ NetGap 用于检查代理出口 IP 是否仍处于预期网络区域。项目提
 
 ## 工作原理
 
-1. **检测代理配置**：对每个查询网址及重定向目标应用系统固定代理、PAC 和绕过规则；明确未启用系统代理时，按平台规则读取 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY`。读取或解析系统规则失败会报告错误，不自行增加 DIRECT；无代理或规则明确选择 DIRECT 时直接联网。
+1. **检测代理配置**：对每个查询网址及重定向目标应用系统固定代理和绕过规则；Windows/macOS 另支持 PAC/WPAD，Linux 自动代理模式仅查询系统路由出口，显示降级提示并暂停自动断网。明确未启用系统代理时，按平台规则读取 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY`。读取、解析失败或模式不支持会报告错误，不自行增加 DIRECT；无代理或规则明确选择 DIRECT 时直接联网。
 2. **轮询 IP 查询 API**：根据配置筛选 API，并按 API key 排序。每轮检查会轮换起始 API；从该 API 开始依次尝试，取得首个有效 IP 后结束本轮查询。网络错误不处罚 API；API 自身连续失败超过 10 次后冷却 30 秒再试，不再永久移除查询器。
 3. **查询 IP 归属地**：使用程序内置或 `assets` 目录中的本地 IPv4/IPv6 数据库解析出口 IP。
 4. **匹配目标区域**：将解析出的省份和城市与配置的区域关键词做包含匹配。匹配到关键词时，判定出口落入目标区域，并记录为本地出口。
@@ -47,7 +47,7 @@ IP 查询、区域匹配、日志查看等监控功能通常无需管理员权�
 | 图形界面监控 | 自动保护开启且预检通过后，命中目标区域时尝试删除默认路由 | 关闭自动删除路由后可监控；启用或启动自动保护会被权限预检拒绝 |
 | 图形界面手动删除/恢复默认路由 | 可执行 | 操作失败并提示权限不足 |
 
-断网操作保存全部网卡双栈默认路由快照后执行删除，部分失败时保存任务并在监控中续作；恢复会核对网络身份。请使用管理员权限执行 `--recover` 或图形界面的恢复操作。删除默认路由无法阻断直连网段、更具体路由或系统新生成的路由。当前修复及验证边界见 [修复进展](docs/proxy-route-repair-progress.md)。
+断网操作保存全部网卡双栈默认路由快照后执行删除，部分失败时保存任务并在监控中续作；恢复会核对网络身份。请使用管理员权限执行 `--recover` 或图形界面的恢复操作。删除默认路由无法阻断直连网段、更具体路由或系统新生成的路由。实现说明见[系统代理与路由说明](docs/system-proxy-routing.md)，验证场景见[已验证场景记录](docs/已验证场景记录.md)和[剩余未验证场景记录](docs/剩余未验证场景记录.md)。
 
 ## 支持的操作系统
 
@@ -56,7 +56,7 @@ IP 查询、区域匹配、日志查看等监控功能通常无需管理员权�
 | 系统 | 当前支持情况 | 平台相关行为 |
 | --- | --- | --- |
 | Windows | 支持命令行版和图形界面版 | 从 Windows 系统配置逐网址应用固定代理/PAC/WPAD；完整路由操作使用 NetTCPIP PowerShell 接口。 |
-| Linux | 支持 Ubuntu 22.04/24.04 amd64 CLI 和 GUI | GNOME 手动规则及 GIO 系统解析助手，KDE/libproxy 支持有明确依赖边界；无桌面时使用环境代理。完整路由操作使用原生 Netlink。 |
+| Linux | 支持 Ubuntu 22.04/24.04 amd64 CLI 和 GUI | GNOME/KDE 无代理、固定 HTTP/HTTPS/SOCKS 与绕过规则；不执行 PAC/WPAD，识别到自动模式后直接查询系统路由出口，仅告警并暂停自动断网。无桌面时使用环境代理，不再携带独立代理助手。完整路由操作使用原生 Netlink。 |
 | macOS | 支持 Intel/Apple Silicon CLI 和 GUI | CFNetwork 按网址解析系统固定代理/PAC/WPAD；原生路由套接字处理双栈、全网卡及接口作用域默认路由。需 CGO，详见 [macOS 功能支持](docs/macos-support.md)。 |
 | 其他系统 | 未列为当前支持平台 | 完整默认路由保护在启用前明确拒绝。 |
 
@@ -69,8 +69,8 @@ Linux/macOS 图形界面的构建需要满足 Wails 对应平台的构建依赖�
 
 ### 部署与验收边界
 
-- Linux CLI 和 GUI 均需将 `netgap-gio-proxy` 放在程序旁，并安装 GIO/glib-networking、桌面代理 schema 和对应 PAC 模块。Ubuntu 22.04 的 libproxy 0.4 需要 `libproxy1-plugin-webkit`；Ubuntu 24.04 GUI 使用 WebKit 4.1 和 `webkit2_41` 构建标签，两种产物不能假定可互换。
-- KDE 的私有配置夹具测试不代表所有 KDE/libproxy 版本、旧配置布局或其他桌面均受支持；详细边界见 [GIO 实施记录](docs/gio-watch-recovery-results.md)。
+- Linux 代理检测不再要求 `netgap-gio-proxy`、libproxy 或 PAC 模块；GNOME 使用系统 `gsettings` 和桌面代理 schema，KDE 直接读取 XDG 配置目录中的 `kioslaverc`。GUI 仍需 GTK/WebKit 及其系统库；Ubuntu 24.04 使用 WebKit 4.1 和 `webkit2_41` 构建标签，两种产物不能假定可互换。
+- Linux PAC/WPAD 不执行自动规则，改为系统路由直查（结果可能不同于浏览器代理出口），持续提示降级，仅告警；不使用环境代理，暂停新断网及已保存的断网重试并保留恢复数据。切回固定或无代理模式后恢复正常处理。KDE 环境变量间接模式及高级 KConfig 代理选项仍明确报错并继续后续复查。详细边界见 [Linux 固定代理说明](docs/linux-proxy-support.md)。历史 GIO/PAC 验收不能证明新实现已验收。
 - GUI 默认开启自动删除路由。普通用户应先关闭该选项再启动监控；自动保护和手动路由操作会检查权限、快照及存储。Linux/macOS 修改路由要求有效 root 权限，当前没有自动提权功能。
 - `--recovery-check --recovery-dir <原快照目录>` 不修改路由，只检查权限、快照格式与恢复存储；实际恢复仍需校验网络绑定、冲突和有效期。此预检不能代替真实恢复验收。
 - 删除默认路由不是完整网络隔离：直连网段、更具体的路由、VPN `/1` 路由和系统重新生成的路由仍可能保持连接。
@@ -88,7 +88,7 @@ Linux/macOS 图形界面的构建需要满足 Wails 对应平台的构建依赖�
 
 ```powershell
 go build -o netgap.exe ./cmd/netgap
-cd cmd/netgapgui && wails build
+cd cmd/netgapgui && node build.mjs
 ```
 
 具体运行方式和参数见各程序的独立 README。

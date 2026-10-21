@@ -53,6 +53,7 @@ const savePreferences = async (preferences) => {
       :language="state.language"
       :close-action="state.closeAction"
       :remove-route-on-match="state.removeRouteOnMatch"
+      :notification-popup="state.notificationPopup"
       :translate="t"
       @cancel="settingsVisible = false"
       @save="savePreferences"

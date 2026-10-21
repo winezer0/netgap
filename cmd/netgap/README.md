@@ -1,6 +1,6 @@
 # NetGap 命令行版
 
-Linux 自动系统代理需要将 `netgap-gio-proxy` 放在 CLI 旁，并安装 GIO/glib-networking 及对应桌面代理/PAC 模块；构建与支持边界见 [GIO 实施记录](../../docs/gio-watch-recovery-results.md)。
+Linux 无需独立代理助手：支持 GNOME/KDE 无代理、固定代理和绕过规则，不执行 PAC/WPAD，识别到自动模式后直接查询系统路由出口，仅告警并暂停自动断网。GNOME 需要系统 `gsettings` 与桌面代理 schema，KDE 读取 `kioslaverc`；支持边界见 [Linux 固定代理说明](../../docs/linux-proxy-support.md)。
 
 恢复前可执行 `netgap --recovery-check --recovery-dir <原快照目录>`，检查权限、快照格式和存储，不修改路由；确认目录后使用 `--recover --recovery-dir <原快照目录>`。实际恢复仍逐条校验网络绑定、冲突和有效期；失败时保留恢复数据。需要原执行身份或具有该目录访问权的管理员/root。
 
@@ -31,14 +31,13 @@ CGO_ENABLED=1 go build -o netgap ./cmd/netgap
 
 macOS 已增加 CFNetwork 系统代理/PAC/WPAD 和原生双栈默认路由后端，原生行为待验证，详见 [macOS 功能支持](../../docs/macos-support.md)。
 
-Linux 的系统解析助手需单独构建并放在 CLI 旁；构建机需 GIO 开发依赖，运行机需对应桌面/PAC 模块：
+Linux 只需构建 CLI，不再构建或部署 GIO 助手：
 
 ```sh
 go build -o netgap ./cmd/netgap
-go build -tags gio -o netgap-gio-proxy ./cmd/netgap-gio-proxy
 ```
 
-Ubuntu 22.04 使用 libproxy 0.4 时还需 `libproxy1-plugin-webkit`，仅安装 WebKit 库不足以提供该 PAC 插件。
+Linux 自动代理模式直接查询系统路由出口（可能不同于浏览器代理出口），持续提示降级，仅告警、不自动断网；已保存的断网重试暂停且保留恢复数据。切回固定或无代理模式后恢复正常处理。
 
 查看帮助：
 
@@ -108,6 +107,6 @@ macOS 需要有效 root 权限。CLI 快照位于当前执行用户的 `~/.cache
 
 ## 尚未完成的验收
 
-五平台原生构建和核心竞态测试已通过；真实代理/切网端到端行为、WPAD 发现、原生监听故障恢复，以及双栈、多网卡的真实断网/恢复仍未验收。Linux sudo 原用户桌面会话和不同 KDE/libproxy 版本也需要实际部署验证。
+历史五平台原生构建和核心竞态测试已通过；移除 Linux GIO 后的固定代理实现需重新验收，历史 PAC 结果不适用于当前 Linux 代码。真实代理/切网端到端行为、Windows/macOS WPAD 发现、原生监听故障恢复，以及双栈、多网卡的完整断网/恢复仍有待验收场景。Linux sudo 原用户桌面会话和 KDE 配置差异也需要实际部署验证。
 
 当前缺少相应隔离环境；真实路由操作不能在日常主机或当前 WSL 上补测。安装包独立下载/归档核验尚未完成；外部 API 可达性及配额需在部署网络检查。剩余项目、限制与通过标准见 [主 README 验收清单](../../README.md#验收状态与已知限制)，已有证据见 [原生验证记录](../../docs/native-desktop-validation.md)。

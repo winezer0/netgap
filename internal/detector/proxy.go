@@ -11,14 +11,15 @@ import (
 
 // ProxyConfig 代理配置结构体
 type ProxyConfig struct {
-	Type        string // "port"
-	Address     string // 代理地址
-	Port        string // 代理端口
-	Enabled     bool   // 代理是否启用
-	Scheme      string
-	credentials *url.Userinfo
-	rules       *proxyRules
-	configErr   error
+	Type            string // "port"
+	Address         string // 代理地址
+	Port            string // 代理端口
+	Enabled         bool   // 代理是否启用
+	Scheme          string
+	ObservationOnly string // A nonempty reason forbids automatic route removal.
+	credentials     *url.Userinfo
+	rules           *proxyRules
+	configErr       error
 }
 
 const (
@@ -44,7 +45,7 @@ func DetectProxyWithSource(ctx context.Context) (*ProxyConfig, string, error) {
 	if proxy != nil && proxy.configErr != nil {
 		return nil, sourceSystem, fmt.Errorf("%w: %w", ErrProxyRules, proxy.configErr)
 	}
-	if proxy != nil && proxy.Enabled {
+	if proxy != nil && (proxy.Enabled || proxy.ObservationOnly != "") {
 		return proxy, sourceSystem, nil
 	}
 

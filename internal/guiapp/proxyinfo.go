@@ -7,11 +7,12 @@ import (
 )
 
 type ProxyConfigInfo struct {
-	Enabled bool   `json:"enabled"`
-	Type    string `json:"type"`
-	Address string `json:"address"`
-	Port    string `json:"port"`
-	Source  string `json:"source"`
+	ObservationOnly string `json:"observationOnly"`
+	Enabled         bool   `json:"enabled"`
+	Type            string `json:"type"`
+	Address         string `json:"address"`
+	Port            string `json:"port"`
+	Source          string `json:"source"`
 }
 
 func (s *Service) GetProxyConfigInfo() (*ProxyConfigInfo, error) {
@@ -23,11 +24,12 @@ func (s *Service) GetProxyConfigInfo() (*ProxyConfigInfo, error) {
 		return &ProxyConfigInfo{Enabled: false, Source: source}, nil
 	}
 	return &ProxyConfigInfo{
-		Enabled: proxy.Enabled,
-		Type:    proxy.Type,
-		Address: proxy.Address,
-		Port:    proxy.Port,
-		Source:  source,
+		ObservationOnly: proxy.ObservationOnly,
+		Enabled:         proxy.Enabled,
+		Type:            proxy.Type,
+		Address:         proxy.Address,
+		Port:            proxy.Port,
+		Source:          source,
 	}, nil
 }
 

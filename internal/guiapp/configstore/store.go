@@ -25,6 +25,7 @@ type Settings struct {
 	CustomAPIURL       string   `json:"customApiUrl" yaml:"custom_api_url"`
 	CloseAction        string   `json:"closeAction" yaml:"close_action"`
 	RemoveRouteOnMatch bool     `json:"removeRouteOnMatch" yaml:"remove_route_on_match"`
+	NotificationPopup  bool     `json:"notificationPopup" yaml:"notification_popup"`
 }
 
 // Store 表示 GUI 配置存储对象。
@@ -100,6 +101,7 @@ func DefaultSettings() *Settings {
 		APIEnabled:         []string{"ipconfig", "ipify", "seeip", "ipapi", "pcjson", "ip2location"},
 		CloseAction:        "tray",
 		RemoveRouteOnMatch: true,
+		NotificationPopup:  true,
 	}
 }
 
@@ -117,6 +119,7 @@ func NormalizeSettings(settings *Settings) *Settings {
 		CustomAPIURL:       normalizeCustomAPIURL(settings.CustomAPIURL),
 		CloseAction:        normalizeCloseAction(settings.CloseAction),
 		RemoveRouteOnMatch: settings.RemoveRouteOnMatch,
+		NotificationPopup:  settings.NotificationPopup,
 	}
 	if len(result.Regions) == 0 {
 		result.Regions = DefaultSettings().Regions

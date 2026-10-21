@@ -31,12 +31,10 @@ def executable(platform):
     return bytes(data)
 
 
-def archive(path, platform, gui, mode=0o755, omit_helper=False, plist=None):
+def archive(path, platform, gui, mode=0o755, plist=None):
     binary = executable(platform)
     if path.name.endswith(".tar.gz"):
         names = ["netgapgui" if gui else "netgap"]
-        if platform.startswith("ubuntu") and not omit_helper:
-            names.append("netgap-gio-proxy")
         with tarfile.open(path, "w:gz") as output:
             for name in names:
                 member = tarfile.TarInfo(name)
@@ -85,10 +83,10 @@ class NativeArchives(unittest.TestCase):
                     self.assertEqual(result["result"], "passed")
                     self.assertEqual(len(result["archives"]), 2)
 
-    def test_missing_helper_and_execute_permission(self):
+    def test_execute_permission(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "gui.tar.gz"
-            for options in ({"omit_helper": True}, {"mode": 0o644}):
+            for options in ({"mode": 0o644},):
                 with self.subTest(options=options):
                     archive(path, "ubuntu-24.04-amd64", True, **options)
                     with self.assertRaises(ValueError):

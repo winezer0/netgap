@@ -81,7 +81,7 @@ func TestLinuxGnomeDetectionAndFingerprint(t *testing.T) {
 func TestLinuxGnomeReadFailureAndRecovery(t *testing.T) {
 	file := fakeGsettings(t, fixtureGsettings)
 	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:1")
-	for _, output := range []string{gnomeFixture(map[string]string{"mode": "'auto'"}), "truncated"} {
+	for _, output := range []string{gnomeFixture(map[string]string{"mode": "'unknown'"}), "truncated"} {
 		if err := os.WriteFile(file, []byte(output), 0600); err != nil {
 			t.Fatal(err)
 		}

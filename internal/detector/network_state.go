@@ -41,7 +41,7 @@ func ProxyFingerprint(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	settings := fmt.Sprintf("%s|%v|%s|%s|%s|%s|%s", source, p.Enabled, p.Type, p.Address, p.Port, p.Scheme, p.rules.fingerprint())
+	settings := fmt.Sprintf("%s|%v|%s|%s|%s|%s|%s|%s", source, p.Enabled, p.Type, p.Address, p.Port, p.Scheme, p.ObservationOnly, p.rules.fingerprint())
 	if p.credentials != nil {
 		settings += "|" + p.credentials.String()
 	}

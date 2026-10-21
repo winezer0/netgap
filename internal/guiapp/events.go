@@ -61,7 +61,34 @@ func (s *Service) emitLocalExitAlert(message string) {
 		return
 	}
 	s.lastLocalExit = time.Now()
+	s.lastAlert = message
 	if s.ctx == nil {
+		return
+	}
+	settings := s.Settings()
+	if settings.NotificationPopup && s.windowHidden.Load() {
+		go func() {
+			if err := notifyDesktop(notificationTitle, message); err != nil {
+				s.logs.Add("WARN", "Failed to show desktop notification: "+err.Error())
+				s.emitLogs()
+			}
+		}()
+	} else if settings.NotificationPopup {
+		runtime.EventsEmit(s.ctx, eventAlertName, &Alert{
+			Type:      "error",
+			Message:   message,
+			Timestamp: time.Now().Unix(),
+		})
+	}
+}
+
+// ShowLastAlert 显示主窗口并重放最近一次匹配提醒。
+func (s *Service) ShowLastAlert() {
+	s.alertMu.Lock()
+	message := s.lastAlert
+	s.alertMu.Unlock()
+	s.ShowWindow()
+	if message == "" || s.ctx == nil {
 		return
 	}
 	runtime.EventsEmit(s.ctx, eventAlertName, &Alert{

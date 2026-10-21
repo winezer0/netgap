@@ -1,6 +1,7 @@
 package configstore
 
 import (
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -38,13 +39,14 @@ func TestStoreSaveLoad(t *testing.T) {
 
 	store := NewStoreWithPath("netgapgui", filepath.Join(t.TempDir(), "netgapgui.yaml"))
 	input := &Settings{
-		Language:     "zh",
-		Interval:     5,
-		KeywordInput: "广东",
-		Regions:      []string{"广东", "深圳"},
-		APIEnabled:   []string{"pcjson", "ip2location", "customip"},
-		CustomAPIURL: "http://38.55.192.13:8080/ip?token=ipinfoapitoken",
-		CloseAction:  "tray",
+		Language:          "zh",
+		Interval:          5,
+		KeywordInput:      "广东",
+		Regions:           []string{"广东", "深圳"},
+		APIEnabled:        []string{"pcjson", "ip2location", "customip"},
+		CustomAPIURL:      "http://38.55.192.13:8080/ip?token=ipinfoapitoken",
+		CloseAction:       "tray",
+		NotificationPopup: true,
 	}
 
 	if err := store.Save(input); err != nil {
@@ -78,10 +80,30 @@ func TestStoreLoadDefault(t *testing.T) {
 	if settings.CloseAction != "tray" {
 		t.Fatalf("expected default close action tray, got %s", settings.CloseAction)
 	}
+	if !settings.NotificationPopup {
+		t.Fatal("expected popup notifications to be enabled by default")
+	}
 	if !settings.RemoveRouteOnMatch {
 		t.Fatal("expected route removal on match to be enabled by default")
 	}
 	if len(settings.Regions) == 0 {
 		t.Fatal("expected default regions")
+	}
+}
+
+func TestStoreLoadLegacySettingsDefaultsNotificationPreferences(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "netgapgui.yaml")
+	if err := os.WriteFile(path, []byte("language: zh\ninterval: 5\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store := NewStoreWithPath("netgapgui", path)
+	settings, err := store.Load()
+	if err != nil {
+		t.Fatalf("load legacy settings failed: %v", err)
+	}
+	if !settings.NotificationPopup {
+		t.Fatal("expected popup notifications to be enabled by default for legacy settings")
 	}
 }

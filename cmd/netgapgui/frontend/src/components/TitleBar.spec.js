@@ -37,6 +37,13 @@ describe('TitleBar', () => {
     ScreenGetAll.mockResolvedValue([{ isCurrent: true, width: 1600, height: 900 }])
   })
 
+  it('shows the build version beside the application name', () => {
+    const wrapper = mount(TitleBar, { props: { language: 'en', closeAction: 'tray' } })
+
+    expect(wrapper.find('.titleText').text()).toContain('netgapgui')
+    expect(wrapper.find('.appVersion').text()).toBe(import.meta.env.VITE_APP_VERSION || 'dev')
+  })
+
   it('emits settings and close actions from the top right buttons', async () => {
     const wrapper = mount(TitleBar, { props: { language: 'en', closeAction: 'tray' } })
     const buttons = wrapper.findAll('.windowActions button')

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"netgap/internal/config"
+	"netgap/internal/detector"
 	"netgap/internal/iproute"
 )
 
@@ -105,6 +106,9 @@ func (s *Service) ClearLogs() {
 }
 
 func formatProxyConfigLog(info *ProxyConfigInfo) string {
+	if info != nil && info.ObservationOnly != "" {
+		return detector.ObservationWarning
+	}
 	if info == nil {
 		return "Proxy config: unknown"
 	}

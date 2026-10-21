@@ -22,6 +22,7 @@ func cloneSettings(settings *configstore.Settings) *configstore.Settings {
 		CustomAPIURL:       settings.CustomAPIURL,
 		CloseAction:        settings.CloseAction,
 		RemoveRouteOnMatch: settings.RemoveRouteOnMatch,
+		NotificationPopup:  settings.NotificationPopup,
 	}
 }
 

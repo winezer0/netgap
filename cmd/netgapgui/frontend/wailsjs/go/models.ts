@@ -9,6 +9,7 @@ export namespace configstore {
 	    customApiUrl: string;
 	    closeAction: string;
 	    removeRouteOnMatch: boolean;
+	    notificationPopup: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -24,6 +25,7 @@ export namespace configstore {
 	        this.customApiUrl = source["customApiUrl"];
 	        this.closeAction = source["closeAction"];
 	        this.removeRouteOnMatch = source["removeRouteOnMatch"];
+	        this.notificationPopup = source["notificationPopup"];
 	    }
 	}
 
@@ -32,6 +34,7 @@ export namespace configstore {
 export namespace guiapp {
 	
 	export class ProxyConfigInfo {
+	    observationOnly: string;
 	    enabled: boolean;
 	    type: string;
 	    address: string;
@@ -44,6 +47,7 @@ export namespace guiapp {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.observationOnly = source["observationOnly"];
 	        this.enabled = source["enabled"];
 	        this.type = source["type"];
 	        this.address = source["address"];
@@ -74,6 +78,7 @@ export namespace guiapp {
 	    customApiUrl: string;
 	    closeAction: string;
 	    removeRouteOnMatch: boolean;
+	    notificationPopup: boolean;
 	    logs: string[];
 	    configPath: string;
 	    isAdmin: boolean;
@@ -96,6 +101,7 @@ export namespace guiapp {
 	        this.customApiUrl = source["customApiUrl"];
 	        this.closeAction = source["closeAction"];
 	        this.removeRouteOnMatch = source["removeRouteOnMatch"];
+	        this.notificationPopup = source["notificationPopup"];
 	        this.logs = source["logs"];
 	        this.configPath = source["configPath"];
 	        this.isAdmin = source["isAdmin"];
@@ -104,7 +110,7 @@ export namespace guiapp {
 	        this.permissionText = source["permissionText"];
 	        this.health = this.convertValues(source["health"], monitor.Health);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -146,7 +152,7 @@ export namespace iproute {
 }
 
 export namespace monitor {
-
+	
 	export class Health {
 	    runId: number;
 	    revision: number;
@@ -159,14 +165,15 @@ export namespace monitor {
 	    lastSuccessAt: number;
 	    consecutiveFailures: number;
 	    queryFailure: string;
+	    observationOnly: string;
 	    disconnectState: string;
 	    disconnectFailure: string;
 	    nextRetryAt: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Health(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.runId = source["runId"];
@@ -180,6 +187,7 @@ export namespace monitor {
 	        this.lastSuccessAt = source["lastSuccessAt"];
 	        this.consecutiveFailures = source["consecutiveFailures"];
 	        this.queryFailure = source["queryFailure"];
+	        this.observationOnly = source["observationOnly"];
 	        this.disconnectState = source["disconnectState"];
 	        this.disconnectFailure = source["disconnectFailure"];
 	        this.nextRetryAt = source["nextRetryAt"];
@@ -187,3 +195,4 @@ export namespace monitor {
 	}
 
 }
+

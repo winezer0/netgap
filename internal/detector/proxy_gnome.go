@@ -150,8 +150,12 @@ func parseGnomeSnapshot(output string) (*ProxyConfig, error) {
 	if mode == "none" {
 		return nil, nil
 	}
+	if mode == "auto" {
+		data, _ := json.Marshal(values)
+		return systemRouteObservation(fmt.Sprintf("gnome:%x", sha256.Sum256(data))), nil
+	}
 	if mode != "manual" {
-		return nil, errors.New("GNOME automatic or unknown proxy mode is not yet supported")
+		return nil, errors.New("unknown Linux GNOME proxy mode")
 	}
 	shared, err := boolean(gnomeProxySchema, "use-same-proxy")
 	if err != nil {

@@ -54,13 +54,18 @@ describe('useAppState', () => {
       interval: 5,
       closeAction: 'tray',
       removeRouteOnMatch: true,
+      notificationPopup: true,
       regions: ['alpha'],
       logs: ['ready'],
       running: false,
       health: { runId: 1, revision: 1, running: false, phase: 'stopped', disconnectState: 'idle' },
     }
     backend.getInitialState.mockResolvedValue(initialState)
-    backend.saveSettings.mockResolvedValue({ closeAction: 'quit', removeRouteOnMatch: false })
+    backend.saveSettings.mockResolvedValue({
+      closeAction: 'quit',
+      removeRouteOnMatch: false,
+      notificationPopup: false,
+    })
   })
 
   afterEach(() => {
@@ -91,15 +96,21 @@ describe('useAppState', () => {
     wrapper = mount(Harness)
     await flushPromises()
 
-    await app.saveSettings({ closeAction: 'quit', removeRouteOnMatch: false })
+    await app.saveSettings({
+      closeAction: 'quit',
+      removeRouteOnMatch: false,
+      notificationPopup: false,
+    })
 
     expect(backend.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
       language: 'en',
       closeAction: 'quit',
       removeRouteOnMatch: false,
+      notificationPopup: false,
     }))
     expect(app.state.closeAction).toBe('quit')
     expect(app.state.removeRouteOnMatch).toBe(false)
+    expect(app.state.notificationPopup).toBe(false)
   })
 
   it('routes tray and quit actions to their backend methods', async () => {
