@@ -42,6 +42,9 @@ func (f *fakeRouteBackend) remove(ctx context.Context, r RouteEntry) error {
 	return nil
 }
 func (f *fakeRouteBackend) restore(ctx context.Context, r RouteEntry, saved time.Time) error {
+	if _, err := loadSnapshot(f.file); err != nil {
+		return errors.New("route restore before durable recovery snapshot")
+	}
 	f.restored = append(f.restored, r)
 	if f.restoreFailure {
 		return errors.New("restore failed")
@@ -97,32 +100,6 @@ func TestSnapshotSavesEveryRouteBeforeRemoval(t *testing.T) {
 	}
 }
 
-func TestBackupFailurePreventsRouteMutations(t *testing.T) {
-	for _, restore := range []bool{false, true} {
-		t.Run(map[bool]string{false: "delete", true: "restore"}[restore], func(t *testing.T) {
-			file := filepath.Join(t.TempDir(), "routes.json")
-			f := &fakeRouteBackend{rows: fakeRoutes(), file: file}
-			if err := saveSnapshot(file, &routeSnapshot{Version: snapshotVersion, SavedAt: time.Now(), Routes: fakeRoutes()}); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(file+".backups", []byte("blocked"), 0600); err != nil {
-				t.Fatal(err)
-			}
-			var err error
-			if restore {
-				err = restoreAllDefaultRoutes(context.Background(), f, file)
-			} else {
-				err = deleteAllDefaultRoutes(context.Background(), f, file)
-			}
-			if err == nil || len(f.removed) != 0 || len(f.restored) != 0 {
-				t.Fatal("mutation despite failed backup", err)
-			}
-			if saved, err := loadSnapshot(file); err != nil || len(saved.Routes) != 3 {
-				t.Fatal("original recovery data lost", err)
-			}
-		})
-	}
-}
 func TestSnapshotRetainedAfterPartialFailure(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "routes.json")
 	f := &fakeRouteBackend{rows: fakeRoutes(), file: file, removeFailure: true}
@@ -135,13 +112,6 @@ func TestSnapshotRetainedAfterPartialFailure(t *testing.T) {
 	}
 	if _, err := loadSnapshot(file); err != nil {
 		t.Fatal("lost recovery data", err)
-	}
-	backups, _ := filepath.Glob(filepath.Join(file+".backups", "*-before-restore-*", filepath.Base(file)))
-	if len(backups) != 1 {
-		t.Fatal("missing complete recovery backup", backups)
-	}
-	if saved, err := loadSnapshot(backups[0]); err != nil || len(saved.Routes) != 3 {
-		t.Fatal("incomplete backup after failure", err)
 	}
 }
 func TestSnapshotRejectsChangedNetworkAndUnsavedDelete(t *testing.T) {

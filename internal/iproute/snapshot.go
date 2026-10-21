@@ -118,28 +118,6 @@ func EnsureProtectionSupported() error {
 
 func snapshotPath() string { return GetCacheFilePath() + ".json" }
 
-// Separate, uniquely named records are never loaded automatically or overwritten.
-// The active file alone authorizes recovery; completed archives cannot replay it.
-func snapshotArchivePath(file, stage string) (string, error) {
-	root := file + ".backups"
-	if err := os.MkdirAll(root, 0700); err != nil {
-		return "", err
-	}
-	dir, err := os.MkdirTemp(root, time.Now().UTC().Format("20060102T150405.000000000Z")+"-"+stage+"-")
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, filepath.Base(file)), nil
-}
-
-func backupSnapshot(file, stage string, snapshot *routeSnapshot) error {
-	archive, err := snapshotArchivePath(file, stage)
-	if err != nil {
-		return err
-	}
-	return saveSnapshot(archive, snapshot)
-}
-
 func saveSnapshot(file string, snapshot *routeSnapshot) error {
 	content, err := json.MarshalIndent(snapshot, "", "  ")
 	if err != nil {
@@ -313,9 +291,6 @@ func deleteAllDefaultRoutes(ctx context.Context, backend routeBackend, file stri
 		return err
 	}
 	snapshot.Disconnect = &disconnectTask{ID: fmt.Sprintf("%x", id), Targets: append([]RouteEntry(nil), routes...), ProxyState: proxyState}
-	if err := backupSnapshot(file, "before-delete", snapshot); err != nil {
-		return fmt.Errorf("back up all default routes before disconnect: %w", err)
-	}
 	if err := saveSnapshot(file, snapshot); err != nil {
 		return fmt.Errorf("save all default routes before disconnect: %w", err)
 	}
@@ -514,9 +489,6 @@ func restoreAllDefaultRoutes(ctx context.Context, backend routeBackend, file str
 		if err := preparer.prepareRestore(ctx, snapshot); err != nil {
 			return err
 		}
-	}
-	if err := backupSnapshot(file, "before-restore", snapshot); err != nil {
-		return fmt.Errorf("back up complete recovery snapshot before restore: %w", err)
 	}
 	if err := saveSnapshot(file, snapshot); err != nil {
 		return err

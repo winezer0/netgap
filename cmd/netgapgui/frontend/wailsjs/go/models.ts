@@ -1,5 +1,5 @@
 export namespace configstore {
-
+	
 	export class Settings {
 	    language: string;
 	    interval: number;
@@ -10,7 +10,7 @@ export namespace configstore {
 	    closeAction: string;
 	    removeRouteOnMatch: boolean;
 	    notificationPopup: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
 	    }
@@ -46,11 +46,11 @@ export namespace guiapp {
 	    protection: string;
 	    active: boolean;
 	    historical: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Alert(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.type = source["type"];
@@ -237,3 +237,4 @@ export namespace monitor {
 	}
 
 }
+
