@@ -1,0 +1,724 @@
+{
+  "run": 39531632499,
+  "commit": "f888e7099520cf68c8d3fd1b545cad467d2f7709",
+  "event": "workflow_dispatch",
+  "status": "completed",
+  "conclusion": "success",
+  "url": "https://github.com/winezer0/netgap/actions/runs/39531632499",
+  "createdAt": "2026-10-21T02:11:35Z",
+  "updatedAt": "2026-10-21T02:20:02Z",
+  "jobs": [
+    {
+      "id": 118999065574,
+      "name": "Native macos-intel",
+      "url": "https://github.com/winezer0/netgap/actions/runs/39531632499/job/118999065574",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-go@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-node@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Confirm native toolchain",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install Linux GUI dependencies",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Test all Go packages with race detection",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test Linux route notifications",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Compile native backends and CLI",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test CLI route deletion and recovery in an isolated network namespace",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install Wails CLI",
+          "conclusion": "success"
+        },
+        {
+          "name": "Generate GUI bindings",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install frontend dependencies",
+          "conclusion": "success"
+        },
+        {
+          "name": "Compile frontend",
+          "conclusion": "success"
+        },
+        {
+          "name": "Compile and package native GUI",
+          "conclusion": "success"
+        },
+        {
+          "name": "Archive Linux binaries",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Archive macOS binaries",
+          "conclusion": "success"
+        },
+        {
+          "name": "Archive Windows binaries",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify native archives before upload",
+          "conclusion": "success"
+        },
+        {
+          "name": "Manual acceptance: Windows WPAD fallback",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Manual acceptance: macOS native network watcher recovery",
+          "conclusion": "success"
+        },
+        {
+          "name": "Manual acceptance: frontend interaction tests",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install virtual display for manual Linux GUI startup",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Manual acceptance: extract and start packaged GUI",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Upload native binaries",
+          "conclusion": "success"
+        },
+        {
+          "name": "Upload validation evidence",
+          "conclusion": "success"
+        },
+        {
+          "name": "Write validation summary",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-node@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-go@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "id": 118999065786,
+      "name": "Native macos-arm64",
+      "url": "https://github.com/winezer0/netgap/actions/runs/39531632499/job/118999065786",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-go@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-node@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Confirm native toolchain",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install Linux GUI dependencies",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Test all Go packages with race detection",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test Linux route notifications",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Compile native backends and CLI",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test CLI route deletion and recovery in an isolated network namespace",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install Wails CLI",
+          "conclusion": "success"
+        },
+        {
+          "name": "Generate GUI bindings",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install frontend dependencies",
+          "conclusion": "success"
+        },
+        {
+          "name": "Compile frontend",
+          "conclusion": "success"
+        },
+        {
+          "name": "Compile and package native GUI",
+          "conclusion": "success"
+        },
+        {
+          "name": "Archive Linux binaries",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Archive macOS binaries",
+          "conclusion": "success"
+        },
+        {
+          "name": "Archive Windows binaries",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify native archives before upload",
+          "conclusion": "success"
+        },
+        {
+          "name": "Manual acceptance: Windows WPAD fallback",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Manual acceptance: macOS native network watcher recovery",
+          "conclusion": "success"
+        },
+        {
+          "name": "Manual acceptance: frontend interaction tests",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install virtual display for manual Linux GUI startup",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Manual acceptance: extract and start packaged GUI",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Upload native binaries",
+          "conclusion": "success"
+        },
+        {
+          "name": "Upload validation evidence",
+          "conclusion": "success"
+        },
+        {
+          "name": "Write validation summary",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-node@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-go@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "id": 118999065844,
+      "name": "Native ubuntu-24.04-amd64",
+      "url": "https://github.com/winezer0/netgap/actions/runs/39531632499/job/118999065844",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-go@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-node@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Confirm native toolchain",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install Linux GUI dependencies",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test all Go packages with race detection",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test Linux route notifications",
+          "conclusion": "success"
+        },
+        {
+          "name": "Compile native backends and CLI",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test CLI route deletion and recovery in an isolated network namespace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install Wails CLI",
+          "conclusion": "success"
+        },
+        {
+          "name": "Generate GUI bindings",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install frontend dependencies",
+          "conclusion": "success"
+        },
+        {
+          "name": "Compile frontend",
+          "conclusion": "success"
+        },
+        {
+          "name": "Compile and package native GUI",
+          "conclusion": "success"
+        },
+        {
+          "name": "Archive Linux binaries",
+          "conclusion": "success"
+        },
+        {
+          "name": "Archive macOS binaries",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Archive Windows binaries",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify native archives before upload",
+          "conclusion": "success"
+        },
+        {
+          "name": "Manual acceptance: Windows WPAD fallback",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Manual acceptance: macOS native network watcher recovery",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Manual acceptance: frontend interaction tests",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install virtual display for manual Linux GUI startup",
+          "conclusion": "success"
+        },
+        {
+          "name": "Manual acceptance: extract and start packaged GUI",
+          "conclusion": "success"
+        },
+        {
+          "name": "Upload native binaries",
+          "conclusion": "success"
+        },
+        {
+          "name": "Upload validation evidence",
+          "conclusion": "success"
+        },
+        {
+          "name": "Write validation summary",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-node@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-go@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "id": 118999065923,
+      "name": "Native ubuntu-22.04-amd64",
+      "url": "https://github.com/winezer0/netgap/actions/runs/39531632499/job/118999065923",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-go@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-node@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Confirm native toolchain",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install Linux GUI dependencies",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test all Go packages with race detection",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test Linux route notifications",
+          "conclusion": "success"
+        },
+        {
+          "name": "Compile native backends and CLI",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test CLI route deletion and recovery in an isolated network namespace",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install Wails CLI",
+          "conclusion": "success"
+        },
+        {
+          "name": "Generate GUI bindings",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install frontend dependencies",
+          "conclusion": "success"
+        },
+        {
+          "name": "Compile frontend",
+          "conclusion": "success"
+        },
+        {
+          "name": "Compile and package native GUI",
+          "conclusion": "success"
+        },
+        {
+          "name": "Archive Linux binaries",
+          "conclusion": "success"
+        },
+        {
+          "name": "Archive macOS binaries",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Archive Windows binaries",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Verify native archives before upload",
+          "conclusion": "success"
+        },
+        {
+          "name": "Manual acceptance: Windows WPAD fallback",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Manual acceptance: macOS native network watcher recovery",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Manual acceptance: frontend interaction tests",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install virtual display for manual Linux GUI startup",
+          "conclusion": "success"
+        },
+        {
+          "name": "Manual acceptance: extract and start packaged GUI",
+          "conclusion": "success"
+        },
+        {
+          "name": "Upload native binaries",
+          "conclusion": "success"
+        },
+        {
+          "name": "Upload validation evidence",
+          "conclusion": "success"
+        },
+        {
+          "name": "Write validation summary",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-node@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-go@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "id": 118999066005,
+      "name": "Native windows-amd64",
+      "url": "https://github.com/winezer0/netgap/actions/runs/39531632499/job/118999066005",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-go@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-node@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Confirm native toolchain",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install Linux GUI dependencies",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Test all Go packages with race detection",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test Linux route notifications",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Compile native backends and CLI",
+          "conclusion": "success"
+        },
+        {
+          "name": "Test CLI route deletion and recovery in an isolated network namespace",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Install Wails CLI",
+          "conclusion": "success"
+        },
+        {
+          "name": "Generate GUI bindings",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install frontend dependencies",
+          "conclusion": "success"
+        },
+        {
+          "name": "Compile frontend",
+          "conclusion": "success"
+        },
+        {
+          "name": "Compile and package native GUI",
+          "conclusion": "success"
+        },
+        {
+          "name": "Archive Linux binaries",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Archive macOS binaries",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Archive Windows binaries",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify native archives before upload",
+          "conclusion": "success"
+        },
+        {
+          "name": "Manual acceptance: Windows WPAD fallback",
+          "conclusion": "success"
+        },
+        {
+          "name": "Manual acceptance: macOS native network watcher recovery",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Manual acceptance: frontend interaction tests",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install virtual display for manual Linux GUI startup",
+          "conclusion": "skipped"
+        },
+        {
+          "name": "Manual acceptance: extract and start packaged GUI",
+          "conclusion": "success"
+        },
+        {
+          "name": "Upload native binaries",
+          "conclusion": "success"
+        },
+        {
+          "name": "Upload validation evidence",
+          "conclusion": "success"
+        },
+        {
+          "name": "Write validation summary",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-node@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-go@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v7",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "expired": false,
+      "name": "native-ubuntu-22.04-amd64",
+      "size_in_bytes": 32519735
+    },
+    {
+      "expired": false,
+      "name": "native-macos-intel",
+      "size_in_bytes": 32713101
+    },
+    {
+      "expired": false,
+      "name": "native-macos-arm64",
+      "size_in_bytes": 32676505
+    },
+    {
+      "expired": false,
+      "name": "evidence-macos-arm64",
+      "size_in_bytes": 9682
+    },
+    {
+      "expired": false,
+      "name": "evidence-windows-amd64",
+      "size_in_bytes": 8366
+    },
+    {
+      "expired": false,
+      "name": "evidence-macos-intel",
+      "size_in_bytes": 9718
+    },
+    {
+      "expired": false,
+      "name": "native-ubuntu-24.04-amd64",
+      "size_in_bytes": 32514219
+    },
+    {
+      "expired": false,
+      "name": "evidence-ubuntu-24.04-amd64",
+      "size_in_bytes": 10929
+    },
+    {
+      "expired": false,
+      "name": "native-windows-amd64",
+      "size_in_bytes": 34052430
+    },
+    {
+      "expired": false,
+      "name": "evidence-ubuntu-22.04-amd64",
+      "size_in_bytes": 10923
+    }
+  ]
+}

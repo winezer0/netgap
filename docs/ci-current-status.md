@@ -11,7 +11,17 @@
 
 ## 是否通过
 
-本地全量自动测试已通过；当前批次远端 CI 正在安排运行，结果将补充在本文。
+**本地全量自动测试及五个平台原生 CI 全部通过。** 提交 `f888e7099520cf68c8d3fd1b545cad467d2f7709` 的手动 [Native Build 39531632499](https://github.com/winezer0/netgap/actions/runs/39531632499) 已成功。相同提交的 push 构建由工作流并发规则取消，以此手动运行结果为准。
+
+| 原生平台 | 结果 |
+|---|---|
+| Windows amd64 | 通过 |
+| Ubuntu 22.04 amd64 | 通过 |
+| Ubuntu 24.04 amd64 | 通过 |
+| macOS Intel | 通过 |
+| macOS Apple Silicon | 通过 |
+
+五个平台均完成 Go 全量竞态测试、CLI/GUI 原生构建、归档校验、前端 lint/交互测试和产物上传；Linux 另外通过隔离网络命名空间中的 CLI 路由删除/恢复，Windows/Linux 通过打包 GUI 启动冒烟，macOS 通过原生监听恢复用例及 `.app` 结构/架构检查。macOS hosted runner 未执行 GUI 进程启动。共上传 5 份 native 产物和 5 份 evidence；步骤及产物元数据见[本批 CI 证据](native-ci-evidence-2026-10-21.json)。本次运行的是 Native Build；Release Build 未触发，不代表正式发布流程已执行。
 
 此前 [Native Build](https://github.com/winezer0/netgap/actions/runs/39528784603) 已成功，对应提交 `09bc82125d96d5283c6b1e7caf00d8538ed1923a`，不证明本批改动通过。
 
