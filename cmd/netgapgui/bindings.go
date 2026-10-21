@@ -6,6 +6,11 @@ import (
 	"netgap/internal/iproute"
 )
 
+// SetWindowForeground reports WebView focus/visibility for notification routing.
+func (a *App) SetWindowForeground(foreground bool, revision uint64) {
+	a.service.SetWindowForeground(foreground, revision)
+}
+
 // GetInitialState 返回当前界面初始状态。
 func (a *App) GetInitialState() *guiapp.ViewState {
 	return a.service.State()
@@ -52,6 +57,10 @@ func (a *App) GetDefaultRouteInfo() (*iproute.RouteInfo, error) {
 
 func (a *App) ClearLogs() {
 	a.service.ClearLogs()
+}
+
+func (a *App) LogUIError(message string) {
+	a.service.LogUIError(message)
 }
 
 func (a *App) GetProxyConfigInfo() (*guiapp.ProxyConfigInfo, error) {

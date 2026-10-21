@@ -19,11 +19,12 @@ import (
 )
 
 const (
-	appName         = "netgapgui"
-	eventStateName  = "netgapgui:state"
-	eventLogName    = "netgapgui:logs"
-	eventAlertName  = "netgapgui:alert"
-	eventHealthName = "netgapgui:health"
+	appName             = "netgapgui"
+	eventStateName      = "netgapgui:state"
+	eventLogName        = "netgapgui:logs"
+	eventAlertName      = "netgapgui:alert"
+	eventHealthName     = "netgapgui:health"
+	eventAlertStateName = "netgapgui:alert-state"
 )
 
 // Service 表示 GUI 应用服务。
@@ -36,10 +37,24 @@ type Service struct {
 	resolver *localdb.Resolver
 	mu       sync.RWMutex
 
-	alertMu       sync.Mutex
-	lastLocalExit time.Time
-	lastAlert     string
-	windowHidden  atomic.Bool
+	alertMu              sync.Mutex
+	lastAlert            *Alert
+	lastNotice           time.Time
+	alertKey             string
+	alertRunID           uint64
+	alertSequence        uint64
+	alertStateRevision   uint64
+	windowReportRevision uint64
+	alertTimer           *time.Timer
+	alertTimerRevision   uint64
+	pendingAlert         *Alert
+	nextDelivery         *Alert
+	alertUnread          bool
+	lastNoticeError      time.Time
+	windowHidden         atomic.Bool
+	windowForeground     atomic.Bool
+	closing              atomic.Bool
+	notificationBusy     atomic.Bool
 }
 
 // NewService 创建 GUI 服务对象。
@@ -72,6 +87,7 @@ func NewService() (*Service, error) {
 	checker := monitorcore.NewChecker(resolver)
 	service.monitor = monitoring.NewManager(service.writeLog, checker.CheckProxyStatusResultContext)
 	service.monitor.SetHealthListener(service.emitHealth)
+	service.monitor.SetMatchListener(service.observeMatch)
 	return service, nil
 }
 
@@ -84,6 +100,10 @@ func (s *Service) Startup(ctx context.Context) {
 
 // Shutdown 停止后台任务并释放日志器。
 func (s *Service) Shutdown() {
+	s.closing.Store(true)
+	s.alertMu.Lock()
+	s.cancelAlertTimerLocked()
+	s.alertMu.Unlock()
 	s.monitor.Stop()
 	if s.resolver != nil {
 		if err := s.resolver.Close(); err != nil {
@@ -101,6 +121,7 @@ func (s *Service) State() *ViewState {
 	s.mu.RUnlock()
 
 	running := s.monitor.Running()
+	latestAlert, alertUnread, alertRevision := s.alertSnapshot()
 	return &ViewState{
 		Language:           settings.Language,
 		Interval:           settings.Interval,
@@ -118,6 +139,9 @@ func (s *Service) State() *ViewState {
 		StatusText:         runningText(running),
 		PermissionText:     permissionText(isAdmin()),
 		Health:             s.monitor.Health(),
+		LatestAlert:        latestAlert,
+		AlertUnread:        alertUnread,
+		AlertRevision:      alertRevision,
 	}
 }
 

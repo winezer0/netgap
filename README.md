@@ -55,7 +55,7 @@ IP 查询、区域匹配、日志查看等监控功能通常无需管理员权�
 
 | 系统 | 当前支持情况 | 平台相关行为 |
 | --- | --- | --- |
-| Windows | 支持命令行版和图形界面版 | 从 Windows 系统配置逐网址应用固定代理/PAC/WPAD；完整路由操作使用 NetTCPIP PowerShell 接口。 |
+| Windows | 支持命令行版和图形界面版 | 从 Windows 系统配置逐网址应用固定代理/PAC/WPAD；完整路由操作使用本机原生 CIM/MI 接口，运行验收待完成。 |
 | Linux | 支持 Ubuntu 22.04/24.04 amd64 CLI 和 GUI | GNOME/KDE 无代理、固定 HTTP/HTTPS/SOCKS 与绕过规则；不执行 PAC/WPAD，识别到自动模式后直接查询系统路由出口，仅告警并暂停自动断网。无桌面时使用环境代理，不再携带独立代理助手。完整路由操作使用原生 Netlink。 |
 | macOS | 支持 Intel/Apple Silicon CLI 和 GUI | CFNetwork 按网址解析系统固定代理/PAC/WPAD；原生路由套接字处理双栈、全网卡及接口作用域默认路由。需 CGO，详见 [macOS 功能支持](docs/macos-support.md)。 |
 | 其他系统 | 未列为当前支持平台 | 完整默认路由保护在启用前明确拒绝。 |
@@ -68,6 +68,8 @@ Linux/macOS 图形界面的构建需要满足 Wails 对应平台的构建依赖�
 - 尚未验证场景与验收要求：[剩余未验证场景记录](docs/剩余未验证场景记录.md)
 
 ### 部署与验收边界
+
+- Windows 原生路由修复已接入本机 CIM/MI 接口，移除完整路由操作的 PowerShell 子进程，并调整变化判定及失败退避。当前通过编译，尚未完成原生只读与隔离断网/恢复验收；Windows 路由保护面向 amd64/arm64，旧恢复快照可能不兼容。详见 [实施计划与验收清单](docs/windows-native-route-repair.md)。
 
 - Linux 代理检测不再要求 `netgap-gio-proxy`、libproxy 或 PAC 模块；GNOME 使用系统 `gsettings` 和桌面代理 schema，KDE 直接读取 XDG 配置目录中的 `kioslaverc`。GUI 仍需 GTK/WebKit 及其系统库；Ubuntu 24.04 使用 WebKit 4.1 和 `webkit2_41` 构建标签，两种产物不能假定可互换。
 - Linux PAC/WPAD 不执行自动规则，改为系统路由直查（结果可能不同于浏览器代理出口），持续提示降级，仅告警；不使用环境代理，暂停新断网及已保存的断网重试并保留恢复数据。切回固定或无代理模式后恢复正常处理。KDE 环境变量间接模式及高级 KConfig 代理选项仍明确报错并继续后续复查。详细边界见 [Linux 固定代理说明](docs/linux-proxy-support.md)。历史 GIO/PAC 验收不能证明新实现已验收。

@@ -17,7 +17,7 @@ func TestPreflightStoragePreservesRecovery(t *testing.T) {
 	if err := preflightStorage(context.Background(), file, false); err != nil {
 		t.Fatal(err)
 	}
-	if err := preflightStorage(context.Background(), file, true); !errors.Is(err, os.ErrNotExist) {
+	if err := preflightStorage(context.Background(), file, true); !errors.Is(err, ErrNoRecoverySnapshot) {
 		t.Fatal("missing recovery accepted", err)
 	}
 	data := []byte("invalid recovery data")

@@ -1,5 +1,5 @@
 export namespace configstore {
-	
+
 	export class Settings {
 	    language: string;
 	    interval: number;
@@ -10,7 +10,7 @@ export namespace configstore {
 	    closeAction: string;
 	    removeRouteOnMatch: boolean;
 	    notificationPopup: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
 	    }
@@ -33,6 +33,40 @@ export namespace configstore {
 
 export namespace guiapp {
 	
+	export class Alert {
+	    type: string;
+	    message: string;
+	    timestamp: number;
+	    observedAt: number;
+	    eventId: number;
+	    runId: number;
+	    ip: string;
+	    location: string;
+	    path: string;
+	    protection: string;
+	    active: boolean;
+	    historical: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new Alert(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.message = source["message"];
+	        this.timestamp = source["timestamp"];
+	        this.observedAt = source["observedAt"];
+	        this.eventId = source["eventId"];
+	        this.runId = source["runId"];
+	        this.ip = source["ip"];
+	        this.location = source["location"];
+	        this.path = source["path"];
+	        this.protection = source["protection"];
+	        this.active = source["active"];
+	        this.historical = source["historical"];
+	    }
+	}
 	export class ProxyConfigInfo {
 	    observationOnly: string;
 	    enabled: boolean;
@@ -57,6 +91,7 @@ export namespace guiapp {
 	}
 	export class RouteActionResult {
 	    success: boolean;
+	    noop: boolean;
 	    message: string;
 	
 	    static createFrom(source: any = {}) {
@@ -66,6 +101,7 @@ export namespace guiapp {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.success = source["success"];
+	        this.noop = source["noop"];
 	        this.message = source["message"];
 	    }
 	}
@@ -86,6 +122,9 @@ export namespace guiapp {
 	    statusText: string;
 	    permissionText: string;
 	    health: monitor.Health;
+	    latestAlert?: Alert;
+	    alertUnread: boolean;
+	    alertRevision: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new ViewState(source);
@@ -109,6 +148,9 @@ export namespace guiapp {
 	        this.statusText = source["statusText"];
 	        this.permissionText = source["permissionText"];
 	        this.health = this.convertValues(source["health"], monitor.Health);
+	        this.latestAlert = this.convertValues(source["latestAlert"], Alert);
+	        this.alertUnread = source["alertUnread"];
+	        this.alertRevision = source["alertRevision"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -195,4 +237,3 @@ export namespace monitor {
 	}
 
 }
-

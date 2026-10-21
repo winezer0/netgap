@@ -190,6 +190,7 @@ func (c *Checker) CheckProxyStatus(ctx context.Context, cfg *config.Config) (boo
 			c.health.SetDisconnect("suspended", nil, time.Time{})
 		}
 		c.pending, c.pendingLoaded = nil, false
+		c.retryDelay, c.nextRetry = 0, time.Time{}
 	}
 	hadPending := false
 	var resumeErr error
@@ -266,6 +267,12 @@ func (c *Checker) CheckProxyStatus(ctx context.Context, cfg *config.Config) (boo
 	if ipInfo == nil {
 		return false, fmt.Errorf("exit IP information is empty"), fetcherName
 	}
+	if !result.IsLocal && c.pending == nil {
+		c.retryDelay, c.nextRetry = 0, time.Time{}
+		if c.health.Snapshot().DisconnectState == "failed" {
+			c.health.SetDisconnect("idle", nil, time.Time{})
+		}
+	}
 
 	logging.Infof("[int: %s] Current IP: %s, Region: %s|%s|%s, ISN: %s",
 		fetcherName, ipInfo.IP, ipInfo.Country, ipInfo.Region, ipInfo.City, ipInfo.Isp)
@@ -293,13 +300,16 @@ func (c *Checker) CheckProxyStatus(ctx context.Context, cfg *config.Config) (boo
 	if result.IsLocal {
 		logging.Warnf("[int: %s] Detected local network, performing network interruption", fetcherName)
 		if cfg.Shutdown {
+			if time.Now().Before(c.nextRetry) {
+				return false, nil, fetcherName
+			}
 			actionCtx, cancel := context.WithTimeout(ctx, DisconnectAttemptTimeout)
 			defer cancel()
 			if err := result.ProtectionGuard(actionCtx); err != nil {
 				if errors.Is(err, detector.ErrObservationOnly) {
 					c.health.SetDisconnect("suspended", nil, time.Time{})
 				} else {
-					c.health.SetDisconnect("failed", err, time.Time{})
+					c.trackDisconnectFailure(err)
 				}
 				return false, err, fetcherName
 			}
@@ -339,21 +349,13 @@ func (c *Checker) trackDisconnectFailure(err error) {
 	if errors.Is(err, detector.ErrStateChanged) || errors.Is(err, iproute.ErrDisconnectObsolete) {
 		c.pending = nil
 	}
+	c.retryDelay = NextDisconnectRetry(c.retryDelay)
+	c.nextRetry = time.Now().Add(c.retryDelay)
 	if c.pending != nil {
-		if c.retryDelay == 0 {
-			c.retryDelay = time.Second
-		} else {
-			c.retryDelay *= 2
-		}
-		if c.retryDelay > 30*time.Second {
-			c.retryDelay = 30 * time.Second
-		}
-		c.nextRetry = time.Now().Add(c.retryDelay)
 		c.health.SetDisconnect("pending", err, c.nextRetry)
 		logging.Warnf("断网未完成，将在 %s 后重试剩余路由，出口查询继续", c.retryDelay)
 	} else {
-		c.retryDelay, c.nextRetry = 0, time.Time{}
-		c.health.SetDisconnect("failed", err, time.Time{})
+		c.health.SetDisconnect("failed", err, c.nextRetry)
 	}
 }
 

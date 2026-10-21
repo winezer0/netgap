@@ -5,12 +5,9 @@ import { useNotification } from '../composables/useNotification'
 
 const props = defineProps({
   translate: { type: Function, required: true },
+  startAction: { type: Function, required: true },
+  stopAction: { type: Function, required: true },
 })
-
-const emit = defineEmits([
-  'start-monitoring',
-  'stop-monitoring',
-])
 
 const { addNotification } = useNotification()
 
@@ -40,8 +37,11 @@ const restoreRoute = async () => {
   if (loadingStates.value.restoreRoute) return
   loadingStates.value.restoreRoute = true
   try {
-    await backend.restoreDefaultRoute()
-    addNotification(props.translate('routeRestoreSuccess'), 'success')
+    const result = await backend.restoreDefaultRoute()
+    addNotification(
+      props.translate(result?.noop ? 'routeRestoreNotNeeded' : 'routeRestoreSuccess'),
+      result?.noop ? 'info' : 'success',
+    )
   } catch (err) {
     addNotification(props.translate('routeRestoreFailed') + ': ' + err, 'error')
   } finally {
@@ -82,27 +82,26 @@ const queryProxyConfig = async () => {
 }
 
 const startMonitoring = async () => {
-  if (loadingStates.value.startMonitor) return
+  if (loadingStates.value.startMonitor || loadingStates.value.stopMonitor) return
   loadingStates.value.startMonitor = true
   try {
-    emit('start-monitoring')
-    // We let useAppState or backend emit the state change, just show notification
-    addNotification(props.translate('startMonitoring') + ' ' + props.translate('success') || 'Success', 'success')
-  } catch {
-    addNotification(props.translate('startMonitoring') + ' ' + props.translate('failed') || 'Failed', 'error')
+    await props.startAction()
+    addNotification(`${props.translate('startMonitoring')} ${props.translate('success')}`, 'success')
+  } catch (error) {
+    addNotification(`${props.translate('startMonitoringFailed')}: ${error instanceof Error ? error.message : String(error)}`, 'error', 6000)
   } finally {
     loadingStates.value.startMonitor = false
   }
 }
 
 const stopMonitoring = async () => {
-  if (loadingStates.value.stopMonitor) return
+  if (loadingStates.value.startMonitor || loadingStates.value.stopMonitor) return
   loadingStates.value.stopMonitor = true
   try {
-    emit('stop-monitoring')
-    addNotification(props.translate('stopMonitoring') + ' ' + props.translate('success') || 'Success', 'success')
-  } catch {
-    addNotification(props.translate('stopMonitoring') + ' ' + props.translate('failed') || 'Failed', 'error')
+    await props.stopAction()
+    addNotification(`${props.translate('stopMonitoring')} ${props.translate('success')}`, 'success')
+  } catch (error) {
+    addNotification(`${props.translate('stopMonitoringFailed')}: ${error instanceof Error ? error.message : String(error)}`, 'error', 6000)
   } finally {
     loadingStates.value.stopMonitor = false
   }
@@ -149,7 +148,7 @@ const stopMonitoring = async () => {
       <button 
         class="primaryBtn successBtn action-btn" 
         :class="{ 'is-loading': loadingStates.startMonitor }"
-        :disabled="loadingStates.startMonitor" 
+        :disabled="loadingStates.startMonitor || loadingStates.stopMonitor"
         @click="startMonitoring"
       >
         {{ translate('startMonitoring') }}
@@ -157,7 +156,7 @@ const stopMonitoring = async () => {
       <button 
         class="primaryBtn dangerBtn action-btn" 
         :class="{ 'is-loading': loadingStates.stopMonitor }"
-        :disabled="loadingStates.stopMonitor" 
+        :disabled="loadingStates.startMonitor || loadingStates.stopMonitor"
         @click="stopMonitoring"
       >
         {{ translate('stopMonitoring') }}

@@ -46,6 +46,7 @@ func (f *fakeRouteBackend) restore(ctx context.Context, r RouteEntry, saved time
 	if f.restoreFailure {
 		return errors.New("restore failed")
 	}
+	f.rows = append(f.rows, r)
 	return nil
 }
 func fakeRoutes() []RouteEntry {
@@ -53,6 +54,17 @@ func fakeRoutes() []RouteEntry {
 		{Destination: "0.0.0.0/0", NextHop: "192.0.2.1", InterfaceIndex: 4, InterfaceGUID: "adapter-a", Addresses: []string{"192.0.2.10/24"}, Metric: 12, Store: "ActiveStore"},
 		{Destination: "::/0", NextHop: "fe80::1", InterfaceIndex: 8, InterfaceGUID: "adapter-b", Addresses: []string{"2001:db8::10/64"}, Metric: 30, Store: "ActiveStore"},
 		{Destination: "0.0.0.0/0", NextHop: "192.0.2.1", InterfaceIndex: 4, InterfaceGUID: "adapter-a", Addresses: []string{"192.0.2.10/24"}, Metric: 12, Store: "PersistentStore"},
+	}
+}
+
+func TestRestoreWithoutSnapshotNeverCallsBackend(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "missing.json")
+	// nil would panic if recovery touched the backend before finding a snapshot.
+	if err := restoreAllDefaultRoutes(context.Background(), nil, file); !errors.Is(err, ErrNoRecoverySnapshot) {
+		t.Fatalf("expected harmless no-op, got %v", err)
+	}
+	if _, err := os.Stat(file); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("restore created a recovery snapshot", err)
 	}
 }
 func TestSnapshotSavesEveryRouteBeforeRemoval(t *testing.T) {
@@ -80,6 +92,36 @@ func TestSnapshotSavesEveryRouteBeforeRemoval(t *testing.T) {
 	if _, err := os.Stat(file); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("completed recovery snapshot not cleared")
 	}
+	if err := restoreAllDefaultRoutes(context.Background(), f, file); !errors.Is(err, ErrNoRecoverySnapshot) || len(f.restored) != 3 {
+		t.Fatal("completed recovery replayed", err)
+	}
+}
+
+func TestBackupFailurePreventsRouteMutations(t *testing.T) {
+	for _, restore := range []bool{false, true} {
+		t.Run(map[bool]string{false: "delete", true: "restore"}[restore], func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "routes.json")
+			f := &fakeRouteBackend{rows: fakeRoutes(), file: file}
+			if err := saveSnapshot(file, &routeSnapshot{Version: snapshotVersion, SavedAt: time.Now(), Routes: fakeRoutes()}); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(file+".backups", []byte("blocked"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			var err error
+			if restore {
+				err = restoreAllDefaultRoutes(context.Background(), f, file)
+			} else {
+				err = deleteAllDefaultRoutes(context.Background(), f, file)
+			}
+			if err == nil || len(f.removed) != 0 || len(f.restored) != 0 {
+				t.Fatal("mutation despite failed backup", err)
+			}
+			if saved, err := loadSnapshot(file); err != nil || len(saved.Routes) != 3 {
+				t.Fatal("original recovery data lost", err)
+			}
+		})
+	}
 }
 func TestSnapshotRetainedAfterPartialFailure(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "routes.json")
@@ -93,6 +135,13 @@ func TestSnapshotRetainedAfterPartialFailure(t *testing.T) {
 	}
 	if _, err := loadSnapshot(file); err != nil {
 		t.Fatal("lost recovery data", err)
+	}
+	backups, _ := filepath.Glob(filepath.Join(file+".backups", "*-before-restore-*", filepath.Base(file)))
+	if len(backups) != 1 {
+		t.Fatal("missing complete recovery backup", backups)
+	}
+	if saved, err := loadSnapshot(backups[0]); err != nil || len(saved.Routes) != 3 {
+		t.Fatal("incomplete backup after failure", err)
 	}
 }
 func TestSnapshotRejectsChangedNetworkAndUnsavedDelete(t *testing.T) {

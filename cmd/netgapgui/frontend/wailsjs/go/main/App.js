@@ -26,6 +26,10 @@ export function HideToTray() {
   return window['go']['main']['App']['HideToTray']();
 }
 
+export function LogUIError(arg1) {
+  return window['go']['main']['App']['LogUIError'](arg1);
+}
+
 export function MinimiseWindow() {
   return window['go']['main']['App']['MinimiseWindow']();
 }
@@ -48,6 +52,10 @@ export function RestoreDefaultRoute() {
 
 export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
+}
+
+export function SetWindowForeground(arg1, arg2) {
+  return window['go']['main']['App']['SetWindowForeground'](arg1, arg2);
 }
 
 export function ShowWindow() {

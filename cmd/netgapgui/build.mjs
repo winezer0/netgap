@@ -6,7 +6,18 @@ import path from 'node:path'
 const projectDir = path.dirname(fileURLToPath(import.meta.url))
 const configPath = path.join(projectDir, 'wails.json')
 const originalConfig = readFileSync(configPath)
-const config = JSON.parse(originalConfig.toString('utf8'))
+if (!originalConfig.toString('utf8').trim()) {
+  throw new Error(`${configPath} is empty; restore a valid Wails configuration before building`)
+}
+let config
+try {
+  config = JSON.parse(originalConfig.toString('utf8'))
+} catch (error) {
+  throw new Error(`Invalid JSON in ${configPath}: ${error.message}`, { cause: error })
+}
+if (!config.info || typeof config.info !== 'object') {
+  throw new Error(`${configPath} must contain an "info" object`)
+}
 
 const gitVersion = spawnSync('git', ['describe', '--tags', '--always', '--dirty'], {
   cwd: projectDir,

@@ -23,10 +23,10 @@ func main() {
 	err = wails.Run(&options.App{
 		Title:             "netgapgui",
 		Width:             600,
-		Height:            700,
+		Height:            800,
 		MinWidth:          600,
-		MinHeight:         700,
-		MaxWidth:          1200,
+		MinHeight:         800,
+		MaxWidth:          800,
 		MaxHeight:         1200,
 		DisableResize:     false,
 		Frameless:         true,

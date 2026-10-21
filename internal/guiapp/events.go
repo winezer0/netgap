@@ -2,8 +2,6 @@ package guiapp
 
 import (
 	"path/filepath"
-	"strings"
-	"time"
 
 	logging "github.com/winezer0/zaplogs"
 	"netgap/internal/monitor"
@@ -13,6 +11,7 @@ import (
 
 // Health updates bypass State(), which also performs permission checks.
 func (s *Service) emitHealth(health monitor.Health) {
+	s.observeAlertHealth(health)
 	if s.ctx != nil {
 		runtime.EventsEmit(s.ctx, eventHealthName, health)
 	}
@@ -46,56 +45,23 @@ func (s *Service) EmitLogs() {
 
 // writeLog 记录一条 GUI 日志并广播到前端。
 func (s *Service) writeLog(level, message string) {
+	switch level {
+	case "ERROR":
+		logging.Errorf("%s", message)
+	case "WARN":
+		logging.Warnf("%s", message)
+	case "DEBUG":
+		logging.Debugf("%s", message)
+	default:
+		logging.Infof("%s", message)
+	}
 	s.logs.Add(level, message)
 	s.emitLogs()
-
-	if level == "WARN" && strings.Contains(message, "Local exit detected") {
-		s.emitLocalExitAlert(message)
-	}
 }
 
-func (s *Service) emitLocalExitAlert(message string) {
-	s.alertMu.Lock()
-	defer s.alertMu.Unlock()
-	if time.Since(s.lastLocalExit) < 3*time.Second {
-		return
-	}
-	s.lastLocalExit = time.Now()
-	s.lastAlert = message
-	if s.ctx == nil {
-		return
-	}
-	settings := s.Settings()
-	if settings.NotificationPopup && s.windowHidden.Load() {
-		go func() {
-			if err := notifyDesktop(notificationTitle, message); err != nil {
-				s.logs.Add("WARN", "Failed to show desktop notification: "+err.Error())
-				s.emitLogs()
-			}
-		}()
-	} else if settings.NotificationPopup {
-		runtime.EventsEmit(s.ctx, eventAlertName, &Alert{
-			Type:      "error",
-			Message:   message,
-			Timestamp: time.Now().Unix(),
-		})
-	}
-}
-
-// ShowLastAlert 显示主窗口并重放最近一次匹配提醒。
-func (s *Service) ShowLastAlert() {
-	s.alertMu.Lock()
-	message := s.lastAlert
-	s.alertMu.Unlock()
-	s.ShowWindow()
-	if message == "" || s.ctx == nil {
-		return
-	}
-	runtime.EventsEmit(s.ctx, eventAlertName, &Alert{
-		Type:      "error",
-		Message:   message,
-		Timestamp: time.Now().Unix(),
-	})
+// LogUIError persists the full message displayed by an error notification.
+func (s *Service) LogUIError(message string) {
+	s.writeLog("ERROR", "UI: "+message)
 }
 
 // initLogger 初始化后端日志输出。

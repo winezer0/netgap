@@ -22,6 +22,8 @@ type RouteEntry struct {
 	Destination        string       `json:"destination"`
 	NextHop            string       `json:"nextHop"`
 	InterfaceIndex     uint32       `json:"interfaceIndex"`
+	InterfaceAlias     string       `json:"interfaceAlias,omitempty"`
+	CompartmentID      uint32       `json:"compartmentId,omitempty"`
 	InterfaceGUID      string       `json:"interfaceGuid"`
 	Addresses          []string     `json:"addresses"`
 	Network            string       `json:"network"`
@@ -69,6 +71,9 @@ func (e *PendingDisconnectError) Unwrap() error { return e.Err }
 
 var ErrDisconnectObsolete = errors.New("saved disconnect task was restored or replaced")
 
+// ErrNoRecoverySnapshot is a harmless restore request with no saved routes.
+var ErrNoRecoverySnapshot = errors.New("no recovery snapshot exists; nothing to restore")
+
 type routeBackend interface {
 	list(context.Context) ([]RouteEntry, error)
 	validate(context.Context, []RouteEntry) error
@@ -78,6 +83,14 @@ type routeBackend interface {
 
 type restorePreparer interface {
 	prepareRestore(context.Context, *routeSnapshot) error
+}
+
+type snapshotCompatibility interface {
+	validateSnapshot(*routeSnapshot) error
+}
+
+type batchRouteRemover interface {
+	removeBatch(context.Context, []RouteEntry) error
 }
 
 var routeOperation = make(chan struct{}, 1)
@@ -104,6 +117,28 @@ func EnsureProtectionSupported() error {
 }
 
 func snapshotPath() string { return GetCacheFilePath() + ".json" }
+
+// Separate, uniquely named records are never loaded automatically or overwritten.
+// The active file alone authorizes recovery; completed archives cannot replay it.
+func snapshotArchivePath(file, stage string) (string, error) {
+	root := file + ".backups"
+	if err := os.MkdirAll(root, 0700); err != nil {
+		return "", err
+	}
+	dir, err := os.MkdirTemp(root, time.Now().UTC().Format("20060102T150405.000000000Z")+"-"+stage+"-")
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, filepath.Base(file)), nil
+}
+
+func backupSnapshot(file, stage string, snapshot *routeSnapshot) error {
+	archive, err := snapshotArchivePath(file, stage)
+	if err != nil {
+		return err
+	}
+	return saveSnapshot(archive, snapshot)
+}
 
 func saveSnapshot(file string, snapshot *routeSnapshot) error {
 	content, err := json.MarshalIndent(snapshot, "", "  ")
@@ -221,6 +256,13 @@ func deleteAllDefaultRoutes(ctx context.Context, backend routeBackend, file stri
 		return fmt.Errorf("cannot preserve existing recovery data: %w", loadErr)
 	}
 	hadPending := loadErr == nil
+	if hadPending {
+		if compatibility, ok := backend.(snapshotCompatibility); ok {
+			if err := compatibility.validateSnapshot(snapshot); err != nil {
+				return err
+			}
+		}
+	}
 	var original *routeSnapshot
 	if snapshot != nil {
 		copySnapshot := *snapshot
@@ -230,7 +272,7 @@ func deleteAllDefaultRoutes(ctx context.Context, backend routeBackend, file stri
 	capturedAt := time.Now().UTC()
 	routes, err := backend.list(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("capture default-route snapshot: %w", err)
 	}
 	if len(routes) == 0 {
 		if hadPending {
@@ -239,7 +281,7 @@ func deleteAllDefaultRoutes(ctx context.Context, backend routeBackend, file stri
 		return errors.New("no default routes to remove")
 	}
 	if err := backend.validate(ctx, routes); err != nil {
-		return err
+		return fmt.Errorf("validate snapshot adapter bindings: %w", err)
 	}
 	if snapshot == nil {
 		snapshot = &routeSnapshot{Version: snapshotVersion, SavedAt: time.Now().UTC()}
@@ -271,11 +313,15 @@ func deleteAllDefaultRoutes(ctx context.Context, backend routeBackend, file stri
 		return err
 	}
 	snapshot.Disconnect = &disconnectTask{ID: fmt.Sprintf("%x", id), Targets: append([]RouteEntry(nil), routes...), ProxyState: proxyState}
+	if err := backupSnapshot(file, "before-delete", snapshot); err != nil {
+		return fmt.Errorf("back up all default routes before disconnect: %w", err)
+	}
 	if err := saveSnapshot(file, snapshot); err != nil {
 		return fmt.Errorf("save all default routes before disconnect: %w", err)
 	}
 	for _, guard := range guards {
 		if err := guard(); err != nil {
+			err = fmt.Errorf("revalidate exit before first route removal: %w", err)
 			if hadPending {
 				return errors.Join(err, saveSnapshot(file, original))
 			}
@@ -337,6 +383,11 @@ func ResumeDefaultRouteDisconnect(ctx context.Context, task *DisconnectTask) err
 	if task == nil || snapshot.Disconnect == nil || snapshot.Disconnect.ID != task.ID {
 		return ErrDisconnectObsolete
 	}
+	if compatibility, ok := snapshotBackend.(snapshotCompatibility); ok {
+		if err := compatibility.validateSnapshot(snapshot); err != nil {
+			return err
+		}
+	}
 	return executeDisconnect(ctx, snapshotBackend, snapshotPath(), snapshot)
 }
 
@@ -376,13 +427,29 @@ func executeDisconnect(ctx context.Context, backend routeBackend, file string, s
 		}
 	}
 	var failures []error
+	var ordered []RouteEntry
 	for _, store := range []string{"PersistentStore", "ActiveStore", "Linux", "Darwin"} {
 		for _, row := range current {
 			if row.Store != store {
 				continue
 			}
+			ordered = append(ordered, row)
+		}
+	}
+	if batch, ok := backend.(batchRouteRemover); ok {
+		if err := batch.removeBatch(ctx, ordered); err != nil {
+			if errors.Is(err, detector.ErrStateChanged) {
+				// Partial removals stay in the recovery set, but changed state
+				// revokes the saved authorization for all further mutations.
+				snapshot.Disconnect = nil
+				return errors.Join(err, saveSnapshot(file, snapshot))
+			}
+			failures = append(failures, err)
+		}
+	} else {
+		for _, row := range ordered {
 			if err := ctx.Err(); err != nil {
-				return pending(err)
+				return pending(errors.Join(append(failures, err)...))
 			}
 			if err := backend.remove(ctx, row); err != nil {
 				failures = append(failures, err)
@@ -418,6 +485,9 @@ func RestoreAllDefaultRoutes(ctx context.Context) error {
 	}
 	defer unlock()
 	if err := restoreAllDefaultRoutes(ctx, snapshotBackend, snapshotPath()); err != nil {
+		if errors.Is(err, ErrNoRecoverySnapshot) {
+			return ErrNoRecoverySnapshot
+		}
 		return fmt.Errorf("restore failed; recovery snapshot path: %s (preserve remaining data and use the same execution identity/data directory): %w", snapshotPath(), err)
 	}
 	return nil
@@ -425,8 +495,16 @@ func RestoreAllDefaultRoutes(ctx context.Context) error {
 
 func restoreAllDefaultRoutes(ctx context.Context, backend routeBackend, file string) error {
 	snapshot, err := loadSnapshot(file)
+	if errors.Is(err, os.ErrNotExist) {
+		return ErrNoRecoverySnapshot
+	}
 	if err != nil {
 		return fmt.Errorf("load complete recovery snapshot (legacy single-gateway cache is insufficient): %w", err)
+	}
+	if compatibility, ok := backend.(snapshotCompatibility); ok {
+		if err := compatibility.validateSnapshot(snapshot); err != nil {
+			return err
+		}
 	}
 	var failures []error
 	var pending []RouteEntry
@@ -436,6 +514,9 @@ func restoreAllDefaultRoutes(ctx context.Context, backend routeBackend, file str
 		if err := preparer.prepareRestore(ctx, snapshot); err != nil {
 			return err
 		}
+	}
+	if err := backupSnapshot(file, "before-restore", snapshot); err != nil {
+		return fmt.Errorf("back up complete recovery snapshot before restore: %w", err)
 	}
 	if err := saveSnapshot(file, snapshot); err != nil {
 		return err
@@ -455,6 +536,27 @@ func restoreAllDefaultRoutes(ctx context.Context, backend routeBackend, file str
 				if err := backend.restore(ctx, route, captured); err != nil {
 					failures = append(failures, err)
 					pending = append(pending, route)
+				}
+			}
+		}
+	}
+	if len(failures) == 0 {
+		current, err := backend.list(ctx)
+		if err != nil {
+			failures = append(failures, fmt.Errorf("verify restored default routes: %w", err))
+			pending = append(pending, snapshot.Routes...)
+		} else {
+			for _, saved := range snapshot.Routes {
+				found := false
+				for _, route := range current {
+					if sameRoute(saved, route) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					failures = append(failures, fmt.Errorf("verify restored route %s via %s on interface %s (%d), store %s: route is missing or its attributes differ", saved.Destination, saved.NextHop, saved.InterfaceAlias, saved.InterfaceIndex, saved.Store))
+					pending = append(pending, saved)
 				}
 			}
 		}
@@ -492,7 +594,10 @@ func restoreAllDefaultRoutes(ctx context.Context, backend routeBackend, file str
 		}
 		return fmt.Errorf("restore incomplete; recovery snapshot retained: %w", err)
 	}
-	return os.Remove(file)
+	if err := os.Remove(file); err != nil {
+		return fmt.Errorf("routes verified restored but cannot remove active recovery snapshot: %w", err)
+	}
+	return nil
 }
 
 func sameRoute(a, b RouteEntry) bool {
@@ -515,5 +620,5 @@ func sameRoute(a, b RouteEntry) bool {
 }
 
 func sameRouteIdentity(a, b RouteEntry) bool {
-	return strings.EqualFold(a.InterfaceGUID, b.InterfaceGUID) && a.Network == b.Network && a.Destination == b.Destination && a.NextHop == b.NextHop && a.Store == b.Store
+	return strings.EqualFold(a.InterfaceGUID, b.InterfaceGUID) && a.Network == b.Network && a.CompartmentID == b.CompartmentID && a.Destination == b.Destination && a.NextHop == b.NextHop && a.Store == b.Store
 }

@@ -16,6 +16,8 @@ export function GetProxyConfigInfo():Promise<guiapp.ProxyConfigInfo>;
 
 export function HideToTray():Promise<void>;
 
+export function LogUIError(arg1:string):Promise<void>;
+
 export function MinimiseWindow():Promise<void>;
 
 export function QuitApp():Promise<void>;
@@ -27,6 +29,8 @@ export function RemoveRegion(arg1:string):Promise<guiapp.ViewState>;
 export function RestoreDefaultRoute():Promise<guiapp.RouteActionResult>;
 
 export function SaveSettings(arg1:configstore.Settings):Promise<guiapp.ViewState>;
+
+export function SetWindowForeground(arg1:boolean,arg2:number):Promise<void>;
 
 export function ShowWindow():Promise<void>;
 

@@ -20,10 +20,14 @@ type ViewState struct {
 	StatusText         string         `json:"statusText"`
 	PermissionText     string         `json:"permissionText"`
 	Health             monitor.Health `json:"health"`
+	LatestAlert        *Alert         `json:"latestAlert"`
+	AlertUnread        bool           `json:"alertUnread"`
+	AlertRevision      uint64         `json:"alertRevision"`
 }
 
 // RouteActionResult 表示路由相关动作结果。
 type RouteActionResult struct {
 	Success bool   `json:"success"`
+	Noop    bool   `json:"noop"`
 	Message string `json:"message"`
 }

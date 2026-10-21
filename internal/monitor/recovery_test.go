@@ -87,9 +87,9 @@ func TestPendingResumeFailureStillQueries(t *testing.T) {
 	}
 }
 
-func TestRecoveryCLIContinuesAfterRouteFailure(t *testing.T) {
+func TestRecoveryCLIContinuesCheckingAndBacksOffAfterRouteFailure(t *testing.T) {
 	c := newRecoveryChecker()
-	removals := 0
+	removals, queries := 0, 0
 	c.removeRoute = func() error {
 		removals++
 		if removals == 1 {
@@ -97,14 +97,21 @@ func TestRecoveryCLIContinuesAfterRouteFailure(t *testing.T) {
 		}
 		return nil
 	}
+	c.lookupIP = func(context.Context, *detector.ProxyConfig, []string, []string, string) (string, error, string) {
+		queries++
+		return "203.0.113.12", nil, "test"
+	}
 	ticks := make(chan time.Time, 3)
 	for i := 0; i < 3; i++ {
 		ticks <- time.Now()
 	}
 	close(ticks)
 	runMonitoring(context.Background(), &config.Config{Regions: []string{"test-local"}, Shutdown: true}, c, ticks)
-	if removals != 2 {
-		t.Fatalf("expected retry and stop only on success, got %d attempts", removals)
+	if removals != 1 || queries != 3 {
+		t.Fatalf("expected one throttled route attempt and all exit queries, got %d attempts and %d queries", removals, queries)
+	}
+	if h := c.Health(); h.DisconnectState != "failed" || h.NextRetryAt <= time.Now().UnixMilli() {
+		t.Fatalf("failed action is not backed off: %+v", h)
 	}
 }
 

@@ -22,17 +22,24 @@ func ProtectionPreflight(ctx context.Context, restore bool) error {
 		return err
 	}
 	file := snapshotPath()
+	release, err := acquireRouteOperation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	// A no-op needs no administrator permission. Serialize the presence check
+	// with deletion so an in-progress snapshot write is never missed.
+	if restore {
+		if _, err := os.Stat(file); errors.Is(err, os.ErrNotExist) {
+			return ErrNoRecoverySnapshot
+		}
+	}
 	if !CheckAdminPermissionContext(ctx) {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		return fmt.Errorf("route administrator/root permission required; recovery snapshot: %s (use the same execution identity and data directory)", file)
 	}
-	release, err := acquireRouteOperation(ctx)
-	if err != nil {
-		return err
-	}
-	defer release()
 	unlock, err := lockSnapshotFile(file)
 	if err != nil {
 		return fmt.Errorf("recovery snapshot lock %s: %w", file, err)
@@ -46,6 +53,9 @@ func preflightStorage(ctx context.Context, file string, restore bool) error {
 		return err
 	}
 	_, err := loadSnapshot(file)
+	if restore && errors.Is(err, os.ErrNotExist) {
+		return ErrNoRecoverySnapshot
+	}
 	if err != nil && (restore || !errors.Is(err, os.ErrNotExist)) {
 		return fmt.Errorf("cannot use recovery snapshot %s; retain this file and use the original identity/data directory: %w", file, err)
 	}

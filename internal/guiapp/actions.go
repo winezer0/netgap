@@ -2,6 +2,7 @@ package guiapp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -78,6 +79,9 @@ func (s *Service) RestoreDefaultRoute() (*RouteActionResult, error) {
 	ctx, cancel := context.WithTimeout(s.operationContext(), time.Minute)
 	defer cancel()
 	if err := iproute.ProtectionPreflight(ctx, true); err != nil {
+		if errors.Is(err, iproute.ErrNoRecoverySnapshot) {
+			return s.noRoutesToRestore(), nil
+		}
 		return nil, err
 	}
 	if !iproute.CheckAdminPermissionContext(ctx) {
@@ -88,6 +92,9 @@ func (s *Service) RestoreDefaultRoute() (*RouteActionResult, error) {
 	}
 	record := s.monitor.ObserveManualRouteAction("restored")
 	err := iproute.RestoreAllDefaultRoutes(ctx)
+	if errors.Is(err, iproute.ErrNoRecoverySnapshot) {
+		return s.noRoutesToRestore(), nil
+	}
 	record(err)
 	if err != nil {
 		return nil, err
@@ -95,6 +102,12 @@ func (s *Service) RestoreDefaultRoute() (*RouteActionResult, error) {
 	message := "All saved default routes restored"
 	s.writeLog("INFO", message)
 	return &RouteActionResult{Success: true, Message: message}, nil
+}
+
+func (s *Service) noRoutesToRestore() *RouteActionResult {
+	message := "No recovery snapshot found; nothing to restore"
+	s.writeLog("INFO", message)
+	return &RouteActionResult{Success: true, Noop: true, Message: message}
 }
 
 func (s *Service) GetDefaultRouteInfo() (*iproute.RouteInfo, error) {

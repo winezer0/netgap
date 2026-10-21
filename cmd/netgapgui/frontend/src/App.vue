@@ -71,8 +71,8 @@ const savePreferences = async (preferences) => {
     />
     <ActionPanel
       :translate="t"
-      @start-monitoring="startMonitoring"
-      @stop-monitoring="stopMonitoring"
+      :start-action="startMonitoring"
+      :stop-action="stopMonitoring"
     />
     <LogPanel :logs="state.logs" :translate="t" />
     <StatusBar
@@ -80,6 +80,7 @@ const savePreferences = async (preferences) => {
       :running="state.running"
       :health="state.health"
       :interval="state.interval"
+      :alert-unread="state.alertUnread"
       :translate="t"
     />
     <NotificationToast />

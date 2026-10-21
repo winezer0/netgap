@@ -20,13 +20,48 @@ var networkGeneration atomic.Uint64
 var networkWatchOnce sync.Once
 var networkWatchErr error
 var networkWatchHandles [2]uintptr
-var networkChanged = syscall.NewCallback(func(context, row, notification uintptr) uintptr { networkGeneration.Add(1); return 0 })
+var interfaceSeen struct {
+	sync.Mutex
+	state string
+}
+var windowsInterfaceChanged = syscall.NewCallback(func(_, _, _ uintptr) uintptr {
+	state, err := windowsAdapterState(context.Background())
+	if err != nil {
+		networkGeneration.Add(1)
+		return 0
+	}
+	interfaceSeen.Lock()
+	if state != interfaceSeen.state {
+		interfaceSeen.state = state
+		networkGeneration.Add(1)
+	}
+	interfaceSeen.Unlock()
+	return 0
+})
 
 func networkState(ctx context.Context) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
 	networkWatchOnce.Do(func() {
+		_, rows, err := windowsRouteState()
+		if err != nil {
+			networkWatchErr = err
+			return
+		}
+		routeSeen.Lock()
+		routeSeen.rows = rows
+		routeSeen.Unlock()
+		// A stopped first run must not permanently poison the process-wide
+		// watcher initialization used by later monitoring runs.
+		state, err := windowsAdapterState(context.Background())
+		if err != nil {
+			networkWatchErr = err
+			return
+		}
+		interfaceSeen.Lock()
+		interfaceSeen.state = state
+		interfaceSeen.Unlock()
 		dll := windows.NewLazySystemDLL("iphlpapi.dll")
 		for i, name := range []string{"NotifyRouteChange2", "NotifyIpInterfaceChange"} {
 			proc := dll.NewProc(name)
@@ -34,7 +69,11 @@ func networkState(ctx context.Context) (string, error) {
 				networkWatchErr = err
 				return
 			}
-			code, _, _ := proc.Call(0, networkChanged, 0, 0, uintptr(unsafe.Pointer(&networkWatchHandles[i])))
+			callback := windowsRouteChanged
+			if i == 1 {
+				callback = windowsInterfaceChanged
+			}
+			code, _, _ := proc.Call(0, callback, 0, 0, uintptr(unsafe.Pointer(&networkWatchHandles[i])))
 			if code != 0 {
 				networkWatchErr = syscall.Errno(code)
 				return
@@ -45,6 +84,21 @@ func networkState(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("watch network changes: %w", networkWatchErr)
 	}
 	before := networkGeneration.Load()
+	adapters, err := windowsAdapterState(ctx)
+	if err != nil {
+		return "", err
+	}
+	routes, _, err := windowsRouteState()
+	if err != nil {
+		return "", err
+	}
+	if before != networkGeneration.Load() {
+		return "", fmt.Errorf("%w while capturing state", ErrStateChanged)
+	}
+	return fmt.Sprint(before) + adapters + "|routes|" + routes, ctx.Err()
+}
+
+func windowsAdapterState(ctx context.Context) (string, error) {
 	size := uint32(15000)
 	var buffer []byte
 	for attempts := 0; attempts < 4; attempts++ {
@@ -76,10 +130,7 @@ func networkState(ctx context.Context) (string, error) {
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		if before != networkGeneration.Load() {
-			return "", fmt.Errorf("%w while capturing state", ErrStateChanged)
-		}
-		return fmt.Sprint(before) + strings.Join(entries, "|"), nil
+		return strings.Join(entries, "|"), nil
 	}
 	return "", errors.New("network adapter table kept changing")
 }

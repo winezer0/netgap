@@ -5,6 +5,7 @@ import {
 import {
   AddRegion,
   ClearLogs,
+  LogUIError,
   GetInitialState,
   GetDefaultRouteInfo,
   GetProxyConfigInfo,
@@ -15,16 +16,19 @@ import {
   RestoreDefaultRoute,
   SaveSettings,
   StartMonitoring,
+  SetWindowForeground,
   StopMonitoring,
 } from '../../wailsjs/go/main/App'
 
 export const backend = {
+  logUIError: (message) => LogUIError(message),
   getInitialState: () => GetInitialState(),
   saveSettings: (payload) => SaveSettings(payload),
   addRegion: (keyword) => AddRegion(keyword),
   removeRegion: (region) => RemoveRegion(region),
   startMonitoring: () => StartMonitoring(),
   stopMonitoring: () => StopMonitoring(),
+  setWindowForeground: (foreground, revision) => SetWindowForeground(foreground, revision),
   removeDefaultRoute: () => RemoveDefaultRoute(),
   restoreDefaultRoute: () => RestoreDefaultRoute(),
   getDefaultRouteInfo: () => GetDefaultRouteInfo(),
@@ -41,4 +45,5 @@ export const backend = {
   onHealth: (handler) => EventsOn('netgapgui:health', handler),
   onLogs: (handler) => EventsOn('netgapgui:logs', handler),
   onAlert: (handler) => EventsOn('netgapgui:alert', handler),
+  onAlertState: (handler) => EventsOn('netgapgui:alert-state', handler),
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -67,6 +68,10 @@ func main() {
 		preflightCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		err := iproute.ProtectionPreflight(preflightCtx, opts.Recover || opts.RecoveryCheck)
 		cancel()
+		if opts.Recover && errors.Is(err, iproute.ErrNoRecoverySnapshot) {
+			fmt.Println("No recovery snapshot found; nothing to restore")
+			return
+		}
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -87,6 +92,10 @@ func main() {
 		actionCtx, cancel := context.WithTimeout(ctx, time.Minute)
 		defer cancel()
 		if err := iproute.RestoreAllDefaultRoutes(actionCtx); err != nil {
+			if errors.Is(err, iproute.ErrNoRecoverySnapshot) {
+				fmt.Println("No recovery snapshot found; nothing to restore")
+				return
+			}
 			fmt.Printf("添加默认路由失败: %v\n", err)
 			return
 		}

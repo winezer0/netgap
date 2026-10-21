@@ -54,6 +54,7 @@ type Manager struct {
 	actionCancel       context.CancelFunc
 	healthRun          atomic.Pointer[monitorRun]
 	healthListener     atomic.Pointer[func(monitorcore.Health)]
+	matchListener      atomic.Pointer[func(MatchEvent)]
 }
 
 // NewManager 创建监测管理器。
@@ -247,6 +248,7 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 			run.health.SetDisconnect("suspended", nil, time.Time{})
 		}
 		run.pending, run.pendingLoaded = nil, false
+		run.retryDelay, run.nextRetry = 0, time.Time{}
 	} else if run.permissionLimited {
 		// Keep saved tasks untouched; this process may only observe and alert.
 		run.health.SetDisconnect("suspended", monitorcore.ErrRoutePermission, time.Time{})
@@ -338,8 +340,16 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 
 	ip := result.IPInfo.IP
 	location := result.LocationTag()
+	m.notifyMatch(run, result)
 	if !result.IsLocal {
 		run.localHandled = false
+		if run.pending == nil {
+			run.retryDelay, run.nextRetry = 0, time.Time{}
+			if run.health.Snapshot().DisconnectState == "failed" {
+				run.health.SetDisconnect("idle", nil, time.Time{})
+				m.notifyHealth(run)
+			}
+		}
 		m.writeRunLog(run, "INFO", fmt.Sprintf("Exit outside monitored regions api[%s] area[%s] ip[%s] path[%s]", fetcherName, location, ip, result.PathTag()))
 		return false
 	}
@@ -354,13 +364,14 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 	if !m.automaticRouteAllowed(run) {
 		return false
 	}
-	if hadPending {
+	if hadPending || time.Now().Before(run.nextRetry) {
 		return false
 	}
 	return m.performRouteAction(run, result.ProtectionGuard)
 }
 
 func (m *Manager) performRouteAction(run *monitorRun, validate func(context.Context) error) bool {
+	started := time.Now()
 	run.health.SetDisconnect("running", nil, time.Time{})
 	m.notifyHealth(run)
 	message, routeErr, attempted := m.removeRouteForRun(run, validate)
@@ -386,31 +397,21 @@ func (m *Manager) performRouteAction(run *monitorRun, validate func(context.Cont
 		if errors.Is(routeErr, detector.ErrStateChanged) || errors.Is(routeErr, iproute.ErrDisconnectObsolete) {
 			run.pending = nil
 		}
+		// Back off ALL failures, including guards before a task was saved. Exit
+		// queries continue; a retry without a capability requires a fresh match.
+		run.retryDelay = monitorcore.NextDisconnectRetry(run.retryDelay)
+		run.nextRetry = time.Now().Add(run.retryDelay)
 		if run.pending != nil {
-			if run.retryDelay == 0 {
-				run.retryDelay = time.Second
-			} else {
-				run.retryDelay *= 2
-			}
-			if run.retryDelay > 30*time.Second {
-				run.retryDelay = 30 * time.Second
-			}
-			run.nextRetry = time.Now().Add(run.retryDelay)
 			run.health.SetDisconnect("pending", routeErr, run.nextRetry)
 			m.writeRunLog(run, "WARN", fmt.Sprintf("Disconnect pending; retry after %s; exit checks continue", run.retryDelay))
 		} else {
-			run.retryDelay, run.nextRetry = 0, time.Time{}
-			if errors.Is(routeErr, iproute.ErrDisconnectObsolete) {
-				run.health.SetDisconnect("idle", nil, time.Time{})
-			} else {
-				run.health.SetDisconnect("failed", routeErr, time.Time{})
-			}
+			run.health.SetDisconnect("failed", routeErr, run.nextRetry)
 		}
 		m.notifyHealth(run)
 		if errors.Is(routeErr, iproute.ErrDisconnectObsolete) {
 			m.writeRunLog(run, "INFO", "Saved disconnect is obsolete; exit checks continue")
 		} else {
-			m.writeRunLog(run, "ERROR", fmt.Sprintf("Remove default route failed: %v", routeErr))
+			m.writeRunLog(run, "ERROR", fmt.Sprintf("Remove default route failed after %s; retry no earlier than %s: %v", time.Since(started).Round(time.Millisecond), run.nextRetry.Format(time.RFC3339), routeErr))
 		}
 		return false
 	}
@@ -420,7 +421,7 @@ func (m *Manager) performRouteAction(run *monitorRun, validate func(context.Cont
 	run.health.SetDisconnect("completed", nil, time.Time{})
 	m.notifyHealth(run)
 	if message != "" {
-		m.writeRunLog(run, "WARN", message)
+		m.writeRunLog(run, "WARN", fmt.Sprintf("%s (elapsed %s)", message, time.Since(started).Round(time.Millisecond)))
 	}
 	return true
 }

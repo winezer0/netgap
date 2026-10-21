@@ -3,6 +3,8 @@ import { backend } from '../services/backend'
 import { translations } from '../services/translations'
 import { useNotification } from './useNotification'
 
+let windowReportRevision = Date.now() * 1000
+
 const state = reactive({
   language: 'zh',
   interval: 3,
@@ -16,6 +18,9 @@ const state = reactive({
   logs: [],
   isAdmin: false,
   running: false,
+  latestAlert: null,
+  alertUnread: false,
+  alertRevision: 0,
   health: { runId: 0, revision: 0, running: false, phase: 'stopped', disconnectState: 'idle' },
 })
 
@@ -26,6 +31,16 @@ function mergeHealth(payload) {
       (payload.runId === current.runId && payload.revision < current.revision)) return
   state.health = payload
   state.running = payload.running
+  useNotification().removeStaleMatchNotifications?.(payload.runId, payload.running || payload.disconnectState === 'completed')
+}
+
+function mergeAlertState(payload) {
+  if (!payload) return
+  if ((payload.alertRevision || 0) < state.alertRevision) return
+  if ((payload.latestAlert?.eventId || 0) < (state.latestAlert?.eventId || 0)) return
+  state.alertRevision = payload.alertRevision || 0
+  state.latestAlert = payload.latestAlert ?? null
+  state.alertUnread = payload.alertUnread ?? false
 }
 
 function mergeState(payload) {
@@ -43,6 +58,7 @@ function mergeState(payload) {
   state.notificationPopup = payload.notificationPopup ?? state.notificationPopup
   state.logs = payload.logs ?? state.logs
   state.isAdmin = payload.isAdmin ?? state.isAdmin
+  if ('latestAlert' in payload) mergeAlertState(payload)
   if (payload.health) mergeHealth(payload.health)
   else state.running = payload.running ?? state.running
 }
@@ -75,12 +91,7 @@ async function removeRegion(region) {
 }
 
 async function startMonitoring() {
-  try {
-    mergeState(await backend.startMonitoring())
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    useNotification().addNotification(`${t('startMonitoringFailed')}: ${message}`, 'error', 6000)
-  }
+  mergeState(await backend.startMonitoring())
 }
 
 async function stopMonitoring() {
@@ -110,12 +121,32 @@ export function useAppState() {
       state.logs = payload ?? []
     }))
     listeners.push(backend.onAlert((payload) => {
+      if (!state.notificationPopup && !payload?.historical) return
+      if (payload?.runId && !payload.historical &&
+          (payload.runId < state.health.runId ||
+           (payload.runId === state.health.runId && !state.running && state.health.disconnectState !== 'completed'))) return
       const message = payload?.message ?? ''
       if (message) {
-        addNotification(message, payload?.type ?? 'error', 3000)
+        addNotification(message, payload?.type ?? 'error', 6000,
+          payload.historical ? { eventId: `history-${payload.eventId}` } : { runId: payload.runId, eventId: payload.eventId })
       }
     }))
+    listeners.push(backend.onAlertState?.(mergeAlertState))
+    const reportForeground = () => {
+      const request = backend.setWindowForeground?.(document.visibilityState === 'visible' && document.hasFocus(), ++windowReportRevision)
+      request?.catch(() => {})
+    }
+    window.addEventListener('focus', reportForeground)
+    window.addEventListener('blur', reportForeground)
+    document.addEventListener('visibilitychange', reportForeground)
+    listeners.push(() => {
+      window.removeEventListener('focus', reportForeground)
+      window.removeEventListener('blur', reportForeground)
+      document.removeEventListener('visibilitychange', reportForeground)
+      backend.setWindowForeground?.(false, ++windowReportRevision)?.catch(() => {})
+    })
     mergeState(await backend.getInitialState())
+    reportForeground()
   })
   onUnmounted(() => {
     for (const remove of listeners) {

@@ -4,22 +4,64 @@ package iproute
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
-	"unicode/utf16"
+	"unsafe"
+
+	"netgap/internal/detector"
 
 	"golang.org/x/sys/windows"
 )
 
 type windowsRouteBackend struct{}
+
+var getCurrentThreadCompartmentID = windows.NewLazySystemDLL("iphlpapi.dll").NewProc("GetCurrentThreadCompartmentId")
+
+// Never merge new native records into a legacy backup that this backend cannot
+// restore. Refuse before any mutation and preserve the original snapshot bytes.
+func (windowsRouteBackend) validateSnapshot(snapshot *routeSnapshot) error {
+	defaultCompartment, compartmentErr := currentWindowsCompartmentID()
+	if compartmentErr != nil {
+		return fmt.Errorf("read current Windows network compartment: %w", compartmentErr)
+	}
+	for i := range snapshot.Routes {
+		row := &snapshot.Routes[i]
+		protocol, protocolErr := strconv.ParseUint(row.Protocol, 10, 16)
+		publish, publishErr := strconv.ParseUint(row.Publish, 10, 8)
+		_, networkErr := windows.GUIDFromString(row.Network)
+		if protocolErr != nil || protocol == 0 || publishErr != nil || publish > 2 || networkErr != nil {
+			return errors.New("Windows recovery snapshot is incompatible with the native backend; retained unchanged; restore with the original version first")
+		}
+		// Earlier native snapshots did not persist compartment IDs. The routes
+		// were enumerated in the current thread's compartment, so use that value.
+		if row.CompartmentID == 0 {
+			row.CompartmentID = defaultCompartment
+		}
+	}
+	return nil
+}
+
+func currentWindowsCompartmentID() (uint32, error) {
+	if err := getCurrentThreadCompartmentID.Find(); err != nil {
+		return 0, err
+	}
+	id, _, callErr := getCurrentThreadCompartmentID.Call()
+	if id == 0 {
+		if callErr != windows.ERROR_SUCCESS {
+			return 0, callErr
+		}
+		return 0, errors.New("Windows returned compartment ID 0")
+	}
+	return uint32(id), nil
+}
 
 func lockSnapshotFile(file string) (func(), error) {
 	if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
@@ -38,110 +80,288 @@ func lockSnapshotFile(file string) (func(), error) {
 
 func newRouteBackend() routeBackend { return windowsRouteBackend{} }
 
-// Data travels on stdin; command length does not depend on route count.
-func routePowerShell(ctx context.Context, body string, data any) ([]byte, error) {
-	payload, err := json.Marshal(data)
+// Reuse the local MI application/session, avoiding repeated provider startup.
+// Route mutations remain serialized by the common snapshot operation lock.
+var routeMI struct {
+	sync.Mutex
+	client *miClient
+}
+
+func routeClient(ctx context.Context) (*miClient, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	routeMI.Lock()
+	defer routeMI.Unlock()
+	if routeMI.client != nil {
+		return routeMI.client, nil
+	}
+	c, err := openMI()
+	if err == nil {
+		routeMI.client = c
+	}
+	return c, err
+}
+
+func windowsBindings(ctx context.Context) (map[uint32]RouteEntry, error) {
+	size := uint32(15000)
+	for attempt := 0; attempt < 4; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		buffer := make([]byte, size)
+		err := windows.GetAdaptersAddresses(windows.AF_UNSPEC, 0, 0, (*windows.IpAdapterAddresses)(unsafe.Pointer(&buffer[0])), &size)
+		if errors.Is(err, windows.ERROR_BUFFER_OVERFLOW) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		bindings := map[uint32]RouteEntry{}
+		for a := (*windows.IpAdapterAddresses)(unsafe.Pointer(&buffer[0])); a != nil; a = a.Next {
+			b := RouteEntry{InterfaceIndex: a.IfIndex, InterfaceAlias: windows.UTF16PtrToString(a.FriendlyName), InterfaceGUID: windows.BytePtrToString(a.AdapterName), Network: a.NetworkGuid.String()}
+			for u := a.FirstUnicastAddress; u != nil; u = u.Next {
+				b.Addresses = append(b.Addresses, fmt.Sprintf("%s/%d", u.Address.IP(), u.OnLinkPrefixLength))
+			}
+			sort.Strings(b.Addresses)
+			bindings[a.IfIndex] = b
+			if a.Ipv6IfIndex != a.IfIndex {
+				v6 := b
+				v6.InterfaceIndex = a.Ipv6IfIndex
+				bindings[a.Ipv6IfIndex] = v6
+			}
+		}
+		return bindings, nil
+	}
+	return nil, errors.New("adapter table kept changing while capturing bindings")
+}
+
+func bindWindowsRoute(row *RouteEntry, bindings map[uint32]RouteEntry) error {
+	if row.Store != "ActiveStore" && row.Store != "PersistentStore" {
+		return errors.New("unsupported Windows route store")
+	}
+	if row.Destination != "0.0.0.0/0" && row.Destination != "::/0" {
+		return errors.New("saved route is not a default route")
+	}
+	hop, err := netip.ParseAddr(row.NextHop)
+	if err != nil || hop.Is6() != (row.Destination == "::/0") {
+		return errors.New("invalid saved default-route next hop")
+	}
+	if row.Metric > 65535 {
+		return errors.New("saved route metric is outside the provider range")
+	}
+	compartment, err := currentWindowsCompartmentID()
+	if err != nil {
+		return err
+	}
+	if row.CompartmentID != 0 && row.CompartmentID != compartment {
+		return errors.New("saved route belongs to a different Windows network compartment; refusing cross-compartment mutation")
+	}
+	for _, b := range bindings {
+		if !strings.EqualFold(b.InterfaceGUID, row.InterfaceGUID) {
+			continue
+		}
+		if b.Network != row.Network {
+			return fmt.Errorf("%w: adapter network identity changed", detector.ErrStateChanged)
+		}
+		saved, current := relevantNetworks(row.Addresses, row.Destination, row.NextHop), relevantNetworks(b.Addresses, row.Destination, row.NextHop)
+		for network := range saved {
+			if current[network] {
+				row.InterfaceIndex = b.InterfaceIndex
+				row.InterfaceAlias = b.InterfaceAlias
+				if row.CompartmentID == 0 {
+					row.CompartmentID = compartment
+				}
+				return nil
+			}
+		}
+		return fmt.Errorf("%w: relevant route subnet changed", detector.ErrStateChanged)
+	}
+	return fmt.Errorf("%w: saved adapter no longer exists", detector.ErrStateChanged)
+}
+
+func readMIRoute(i *miInstance) (RouteEntry, error) {
+	var r RouteEntry
+	var failures []error
+	getString := func(name string) string { v, err := miGetString(i, name); failures = append(failures, err); return v }
+	getNumber := func(name string, typ uint32) uint32 {
+		v, err := miGetNumber(i, name, typ)
+		failures = append(failures, err)
+		return v
+	}
+	r.Destination, r.NextHop = getString("DestinationPrefix"), getString("NextHop")
+	r.InterfaceIndex, r.Metric = getNumber("InterfaceIndex", miUint32), getNumber("RouteMetric", miUint16)
+	r.CompartmentID = getNumber("CompartmentId", miUint32)
+	r.Protocol, r.Publish = fmt.Sprint(getNumber("Protocol", miUint16)), fmt.Sprint(getNumber("Publish", miUint8))
+	var err error
+	r.ValidTicks, err = miGetTicks(i, "ValidLifetime")
+	failures = append(failures, err)
+	r.PreferredTicks, err = miGetTicks(i, "PreferredLifetime")
+	failures = append(failures, err)
+	return r, errors.Join(failures...)
+}
+
+const windowsDefaultsQuery = "SELECT * FROM MSFT_NetRoute WHERE DestinationPrefix = '0.0.0.0/0' OR DestinationPrefix = '::/0'"
+
+func (windowsRouteBackend) list(ctx context.Context) ([]RouteEntry, error) {
+	c, err := routeClient(ctx)
 	if err != nil {
 		return nil, err
 	}
-	script := `$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; [Console]::InputEncoding=[Text.UTF8Encoding]::new($false); [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); $data=ConvertFrom-Json ([Console]::In.ReadToEnd()); ` + routePSHelpers + body
-	chars := utf16.Encode([]rune(script))
-	encoded := make([]byte, len(chars)*2)
-	for i, c := range chars {
-		binary.LittleEndian.PutUint16(encoded[i*2:], c)
-	}
-	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", base64.StdEncoding.EncodeToString(encoded))
-	cmd.Stdin = strings.NewReader(string(payload))
-	hideWindow(cmd)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return nil, fmt.Errorf("Windows route operation: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-	return out, nil
-}
-
-const routePSHelpers = `
-function Get-Binding($index) {
-  $adapter=Get-NetAdapter -IncludeHidden | Where-Object InterfaceIndex -eq $index | Select-Object -First 1
-  if ($null -eq $adapter) { throw "Interface $index no longer exists" }
-  $addresses=@(Get-NetIPAddress -InterfaceIndex $index | ForEach-Object { "$($_.IPAddress)/$($_.PrefixLength)" } | Sort-Object)
-  $network=@(Get-NetConnectionProfile | Where-Object InterfaceIndex -eq $index | ForEach-Object { "$($_.InstanceID)/$($_.Name)" } | Sort-Object) -join '|'
-  return @{guid=$adapter.InterfaceGuid.ToString(); addresses=$addresses; network=$network}
-}
-function Assert-Binding($r) {
-  $adapter=@(Get-NetAdapter -IncludeHidden | Where-Object { $_.InterfaceGuid.ToString() -eq $r.interfaceGuid })
-  if ($adapter.Count -ne 1) { throw 'Saved adapter no longer exists uniquely' }
-  $r.interfaceIndex=$adapter[0].InterfaceIndex
-  $binding=Get-Binding $r.interfaceIndex
-  if ($binding.guid -ne $r.interfaceGuid -or $binding.network -ne $r.network) { throw "Interface/network identity changed on interface $($r.interfaceIndex)" }
-  $saved=@(Get-RouteNetworks $r.addresses $r.destination $r.nextHop)
-  $current=@(Get-RouteNetworks $binding.addresses $r.destination $r.nextHop)
-  if ($saved.Count -eq 0 -or @($saved | Where-Object { $current -contains $_ }).Count -eq 0) { throw 'Relevant route subnet changed' }
-}
-function Get-RouteNetworks($addresses,$destination,$nextHop) {
-  $v6=$destination -eq '::/0'
-  $hop=[Net.IPAddress]::Parse($nextHop).GetAddressBytes()
-  $all=@(); $onLink=@()
-  foreach($address in @($addresses)) {
-    $parts=$address -split '/'; $ip=[Net.IPAddress]::Parse($parts[0]); $bytes=$ip.GetAddressBytes()
-    if (($bytes.Length -eq 16) -ne $v6) { continue }
-    $bits=[int]$parts[1]; $network=New-Object byte[] $bytes.Length; $matches=$hop.Length -eq $bytes.Length
-    for($i=0;$i -lt $bytes.Length;$i++) {
-      $count=[Math]::Min(8,[Math]::Max(0,$bits-8*$i)); $mask=(256-[Math]::Pow(2,8-$count))
-      $network[$i]=$bytes[$i] -band [int]$mask
-      if ($matches -and (($hop[$i] -band [int]$mask) -ne $network[$i])) { $matches=$false }
-    }
-    $key=([Net.IPAddress]::new($network)).ToString()+'/'+$bits; $all+=$key
-    if ($matches) { $onLink+=$key }
-  }
-  if ($onLink.Count -gt 0) { return @($onLink | Sort-Object -Unique) }
-  return @($all | Sort-Object -Unique)
-}
-function Get-Defaults($store) {
-  return @(Get-NetRoute -PolicyStore $store | Where-Object { $_.DestinationPrefix -eq '0.0.0.0/0' -or $_.DestinationPrefix -eq '::/0' })
-}
-function Get-Matching($r) {
-  return @(Get-Defaults $r.store | Where-Object { $_.InterfaceIndex -eq $r.interfaceIndex -and $_.DestinationPrefix -eq $r.destination -and $_.NextHop -eq $r.nextHop })
-}
-`
-
-func (windowsRouteBackend) list(ctx context.Context) ([]RouteEntry, error) {
-	out, err := routePowerShell(ctx, `
-$rows=@(foreach($store in @('ActiveStore','PersistentStore')) {
-  foreach($r in (Get-Defaults $store)) {
-    $b=Get-Binding $r.InterfaceIndex
-    [pscustomobject]@{destination=$r.DestinationPrefix; nextHop=$r.NextHop; interfaceIndex=$r.InterfaceIndex; interfaceGuid=$b.guid; addresses=@($b.addresses); network=$b.network; metric=$r.RouteMetric; store=$store; protocol=$r.Protocol.ToString(); publish=$r.Publish.ToString(); validTicks=$r.ValidLifetime.Ticks.ToString(); preferredTicks=$r.PreferredLifetime.Ticks.ToString()}
-  }
-})
-ConvertTo-Json -InputObject @($rows) -Depth 6 -Compress
-`, nil)
+	bindings, err := windowsBindings(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var rows []RouteEntry
-	if err := json.Unmarshal(out, &rows); err != nil {
-		return nil, fmt.Errorf("parse Windows route snapshot: %w", err)
+	for _, store := range []string{"ActiveStore", "PersistentStore"} {
+		err = c.query(ctx, store, windowsDefaultsQuery, func(i *miInstance) error {
+			r, err := readMIRoute(i)
+			if err != nil {
+				return err
+			}
+			b, ok := bindings[r.InterfaceIndex]
+			if !ok {
+				return fmt.Errorf("interface %d no longer exists", r.InterfaceIndex)
+			}
+			r.Store, r.InterfaceAlias, r.InterfaceGUID, r.Network, r.Addresses = store, b.InterfaceAlias, b.InterfaceGUID, b.Network, b.Addresses
+			rows = append(rows, r)
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("enumerate %s default routes: %w", store, err)
+		}
 	}
-	return rows, nil
+	return rows, ctx.Err()
 }
 
 func (windowsRouteBackend) validate(ctx context.Context, rows []RouteEntry) error {
-	_, err := routePowerShell(ctx, `foreach($r in @($data)) { Assert-Binding $r }`, rows)
-	return err
+	bindings, err := windowsBindings(ctx)
+	if err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if err := bindWindowsRoute(&row, bindings); err != nil {
+			return err
+		}
+	}
+	return ctx.Err()
+}
+
+// Match parsed identities, rather than interpolating stored values into WQL.
+// MI owns a result instance until the next pull; mutations consume it in place.
+func windowsMatching(ctx context.Context, row RouteEntry, visit func(*miClient, *miInstance, RouteEntry) error) (int, error) {
+	c, err := routeClient(ctx)
+	if err != nil {
+		return 0, err
+	}
+	bindings, err := windowsBindings(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if err := bindWindowsRoute(&row, bindings); err != nil {
+		return 0, err
+	}
+	count := 0
+	err = c.query(ctx, row.Store, windowsDefaultsQuery, func(i *miInstance) error {
+		current, err := readMIRoute(i)
+		if err != nil {
+			return err
+		}
+		if current.InterfaceIndex != row.InterfaceIndex || current.CompartmentID != row.CompartmentID || current.Destination != row.Destination || current.NextHop != row.NextHop {
+			return nil
+		}
+		count++
+		if visit != nil {
+			return visit(c, i, current)
+		}
+		return nil
+	})
+	return count, err
+}
+
+func windowsAttributesMatch(a, b RouteEntry) bool {
+	return a.Metric == b.Metric && a.Protocol == b.Protocol && a.Publish == b.Publish
+}
+
+// Enumerate once per store, rather than querying all default routes again for
+// each target. Every mutation still checks the saved target and current binding.
+func (windowsRouteBackend) removeBatch(ctx context.Context, rows []RouteEntry) error {
+	c, err := routeClient(ctx)
+	if err != nil {
+		return err
+	}
+	bindings, err := windowsBindings(ctx)
+	if err != nil {
+		return err
+	}
+	key := func(r RouteEntry) string {
+		return fmt.Sprintf("%d|%d|%s|%s", r.CompartmentID, r.InterfaceIndex, r.Destination, r.NextHop)
+	}
+	targets := map[string]map[string]RouteEntry{"PersistentStore": {}, "ActiveStore": {}}
+	for _, row := range rows {
+		if err := bindWindowsRoute(&row, bindings); err != nil {
+			return err
+		}
+		targets[row.Store][key(row)] = row
+	}
+	var failures []error
+	for _, store := range []string{"PersistentStore", "ActiveStore"} {
+		if len(targets[store]) == 0 {
+			continue
+		}
+		err := c.query(ctx, store, windowsDefaultsQuery, func(i *miInstance) error {
+			current, err := readMIRoute(i)
+			if err != nil {
+				return err
+			}
+			row, ok := targets[store][key(current)]
+			if !ok {
+				return nil
+			}
+			if !windowsAttributesMatch(current, row) {
+				return fmt.Errorf("%w: route changed before batch removal", detector.ErrStateChanged)
+			}
+			bindings, err := windowsBindings(ctx)
+			if err != nil {
+				return err
+			}
+			if err := bindWindowsRoute(&row, bindings); err != nil {
+				return err
+			}
+			if err := c.delete(ctx, store, i); err != nil {
+				failures = append(failures, fmt.Errorf("remove %s default route on interface %d: %w", store, row.InterfaceIndex, err))
+			}
+			return ctx.Err()
+		})
+		if err != nil {
+			failures = append(failures, fmt.Errorf("batch removal in %s: %w", store, err))
+			break
+		}
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	return errors.Join(failures...)
 }
 
 func (windowsRouteBackend) remove(ctx context.Context, row RouteEntry) error {
-	_, err := routePowerShell(ctx, routeRemovePS, row)
+	_, err := windowsMatching(ctx, row, func(c *miClient, i *miInstance, current RouteEntry) error {
+		if !windowsAttributesMatch(current, row) {
+			return fmt.Errorf("%w: route changed before removal", detector.ErrStateChanged)
+		}
+		bindings, err := windowsBindings(ctx)
+		if err != nil {
+			return err
+		}
+		if err := bindWindowsRoute(&row, bindings); err != nil {
+			return err
+		}
+		return c.delete(ctx, row.Store, i)
+	})
 	return err
 }
 
-// Journal ActiveStore side effects before persistent creation. This survives a
-// crash between restoring the persistent entry and reconciling its active copy.
+// Journal the active side effects of persistent creation before any mutation.
 func (b windowsRouteBackend) prepareRestore(ctx context.Context, snapshot *routeSnapshot) error {
 	current, err := b.list(ctx)
 	if err != nil {
@@ -198,70 +418,178 @@ func (b windowsRouteBackend) prepareRestore(ctx context.Context, snapshot *route
 	return nil
 }
 
-const routeRemovePS = `
-$r=$data; Assert-Binding $r
-$matches=Get-Matching $r
-foreach($item in $matches) {
-  if ($item.RouteMetric -ne $r.metric -or $item.Protocol.ToString() -ne $r.protocol) { throw 'Route changed before removal' }
-  $item | Remove-NetRoute -Confirm:$false
-}
-`
-
-func (windowsRouteBackend) restore(ctx context.Context, row RouteEntry, saved time.Time) error {
-	_, err := routePowerShell(ctx, routeRestorePS, map[string]any{"route": row, "savedAt": saved.UTC().Format("2006-01-02T15:04:05.0000000Z07:00")})
-	return err
+func routeLifetimeParam(name, ticks string, saved time.Time) (miParameter, error) {
+	return routeLifetimeParamAt(name, ticks, saved, time.Now())
 }
 
-const routeRestorePS = `
-$r=$data.route; Assert-Binding $r
-$matches=Get-Matching $r
-function Same-Attributes($item,$expected) {
-  return $item.RouteMetric -eq $expected.metric -and $item.Protocol.ToString() -eq $expected.protocol -and $item.Publish.ToString() -eq $expected.publish
+func routeLifetimeParamAt(name, ticks string, saved, now time.Time) (miParameter, error) {
+	value, err := strconv.ParseUint(ticks, 10, 64)
+	if err != nil {
+		return miParameter{}, err
+	}
+	const infinite = uint64(42949672950000000)
+	if value >= infinite {
+		value = infinite
+	} else {
+		elapsed := now.Sub(saved) / 100
+		if elapsed < 0 {
+			elapsed = 0
+		}
+		if uint64(elapsed) >= value {
+			value = 0
+		} else {
+			value -= uint64(elapsed)
+		}
+	}
+	// NetTCPIP accepts whole-second route lifetimes. Subtracting elapsed
+	// time in ticks otherwise produces a fractional CIM interval rejected by
+	// the provider. Round down so recovery never extends a saved lifetime.
+	seconds := value / 10000000
+	if seconds == 0 && name == "ValidLifetime" {
+		return miParameter{}, errors.New("saved route lifetime expired; reconnect to reacquire a route")
+	}
+	p := miParameter{name: name, typ: miDatetime}
+	parts := (*[9]uint32)(unsafe.Pointer(&p.value))
+	parts[1], parts[2], parts[3], parts[4] = uint32(seconds/86400), uint32(seconds%86400/3600), uint32(seconds%3600/60), uint32(seconds%60)
+	return p, nil
 }
-if ($r.removeAfterRestore) {
-  foreach($item in $matches) {
-    if (-not (Same-Attributes $item $r.createdByRecovery)) { throw 'Generated active route changed; refusing cleanup' }
-    $item | Remove-NetRoute -Confirm:$false
-  }
-  if (@(Get-Matching $r).Count -ne 0) { throw 'Generated active route cleanup not confirmed' }
-  return
+
+func windowsCreateParameters(row RouteEntry, saved time.Time) ([]miParameter, error) {
+	protocol, err := strconv.ParseUint(row.Protocol, 10, 16)
+	if err != nil || protocol == 0 {
+		return nil, errors.New("invalid saved route protocol")
+	}
+	publish, err := strconv.ParseUint(row.Publish, 10, 8)
+	if err != nil || publish > 2 {
+		return nil, errors.New("invalid saved route publish mode")
+	}
+	now := time.Now()
+	valid, err := routeLifetimeParamAt("ValidLifetime", row.ValidTicks, saved, now)
+	if err != nil {
+		return nil, err
+	}
+	preferred, err := routeLifetimeParamAt("PreferredLifetime", row.PreferredTicks, saved, now)
+	if err != nil {
+		return nil, err
+	}
+	family := uint32(windows.AF_INET)
+	if row.Destination == "::/0" {
+		family = windows.AF_INET6
+	}
+	// Follow the system CDXML ByInterfaceIndex set: alias is an alternative
+	// selector. Omit optional inputs instead of supplying empty defaults.
+	params := []miParameter{
+		miNumberParam("AddressFamily", miUint16, family),
+		miStringParam("DestinationPrefix", row.Destination),
+		miNumberParam("InterfaceIndex", miUint32, row.InterfaceIndex),
+		miStringParam("NextHop", row.NextHop), valid, preferred,
+		miNumberParam("Protocol", miUint16, uint32(protocol)),
+		miNumberParam("Publish", miUint8, uint32(publish)),
+		miNumberParam("RouteMetric", miUint16, row.Metric),
+	}
+	switch row.Store {
+	case "ActiveStore":
+		params = append(params, miStringParam("PolicyStore", "ActiveStore"))
+	case "PersistentStore": // Default creation updates both stores; journaled by prepareRestore.
+	default:
+		return nil, errors.New("unsupported Windows route store")
+	}
+	return params, nil
 }
-if ($matches.Count -gt 0) {
-  $allMatch=$true
-  foreach($item in $matches) { if (-not (Same-Attributes $item $r)) { $allMatch=$false } }
-  if ($allMatch) { return }
-  if ($r.store -ne 'ActiveStore' -or $null -eq $r.createdByRecovery) { throw 'Existing route conflicts with recovery snapshot' }
-  foreach($item in $matches) { if (-not (Same-Attributes $item $r.createdByRecovery)) { throw 'Generated active route changed; refusing replacement' } }
-  foreach($item in $matches) { $item | Remove-NetRoute -Confirm:$false }
+
+func (b windowsRouteBackend) restore(ctx context.Context, row RouteEntry, saved time.Time) error {
+	var existing []RouteEntry
+	_, err := windowsMatching(ctx, row, func(_ *miClient, _ *miInstance, r RouteEntry) error { existing = append(existing, r); return nil })
+	if err != nil {
+		return err
+	}
+	if row.RemoveAfterRestore {
+		if row.CreatedByRecovery == nil {
+			return errors.New("generated route cleanup has no journal")
+		}
+		for _, r := range existing {
+			if !windowsAttributesMatch(r, *row.CreatedByRecovery) {
+				return errors.New("generated active route changed; refusing cleanup")
+			}
+		}
+		cleanup := row
+		cleanup.Metric, cleanup.Protocol, cleanup.Publish = row.CreatedByRecovery.Metric, row.CreatedByRecovery.Protocol, row.CreatedByRecovery.Publish
+		if err := b.remove(ctx, cleanup); err != nil {
+			return err
+		}
+		count, err := windowsMatching(ctx, row, nil)
+		if err != nil {
+			return err
+		}
+		if count != 0 {
+			return errors.New("generated route cleanup was not confirmed")
+		}
+		return nil
+	}
+	if len(existing) > 0 {
+		allMatch := true
+		for _, r := range existing {
+			allMatch = allMatch && windowsAttributesMatch(r, row)
+		}
+		if allMatch {
+			return nil
+		}
+		if row.Store != "ActiveStore" || row.CreatedByRecovery == nil {
+			return errors.New("existing route conflicts with recovery snapshot")
+		}
+		for _, r := range existing {
+			if !windowsAttributesMatch(r, *row.CreatedByRecovery) {
+				return errors.New("generated active route changed; refusing replacement")
+			}
+		}
+		generated := row
+		generated.Metric, generated.Protocol, generated.Publish = row.CreatedByRecovery.Metric, row.CreatedByRecovery.Protocol, row.CreatedByRecovery.Publish
+		if err := b.remove(ctx, generated); err != nil {
+			return err
+		}
+	}
+	bindings, err := windowsBindings(ctx)
+	if err != nil {
+		return err
+	}
+	if err := bindWindowsRoute(&row, bindings); err != nil {
+		return err
+	}
+	params, err := windowsCreateParameters(row, saved)
+	if err != nil {
+		return err
+	}
+	if row.Store == "PersistentStore" {
+		active := row
+		active.Store = "ActiveStore"
+		_, err = windowsMatching(ctx, active, func(_ *miClient, _ *miInstance, r RouteEntry) error {
+			if !windowsAttributesMatch(r, row) && (row.ActiveBefore == nil || !windowsAttributesMatch(r, *row.ActiveBefore)) {
+				return errors.New("active route changed before persistent creation")
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	c, err := routeClient(ctx)
+	if err != nil {
+		return err
+	}
+	createErr := c.create(ctx, params)
+	if createErr != nil {
+		createErr = fmt.Errorf("create default route %s via %s on interface %s (%d), compartment %d, store %s: %w", row.Destination, row.NextHop, row.InterfaceAlias, row.InterfaceIndex, row.CompartmentID, row.Store, createErr)
+	}
+	// Persistent creation may report an active duplicate after persisting it.
+	// Only exact attributes in the requested store can confirm restoration.
+	count, verifyErr := windowsMatching(ctx, row, func(_ *miClient, _ *miInstance, r RouteEntry) error {
+		if !windowsAttributesMatch(r, row) {
+			return errors.New("restored route attributes differ from recovery snapshot")
+		}
+		return nil
+	})
+	if verifyErr != nil || count == 0 {
+		return errors.Join(createErr, verifyErr, errors.New("route restoration was not confirmed"))
+	}
+	return ctx.Err()
 }
-$elapsed=([DateTime]::UtcNow-([DateTime]::Parse($data.savedAt).ToUniversalTime())).Ticks
-function Remaining($ticks) {
-  $value=[Int64]::Parse($ticks)
-  if ($value -ge [TimeSpan]::MaxValue.Ticks -or $value -ge 42949672950000000) { return [TimeSpan]::MaxValue }
-  return [TimeSpan]::FromTicks([Math]::Max([Int64]0, $value-$elapsed))
-}
-$valid=Remaining $r.validTicks; $preferred=Remaining $r.preferredTicks
-if ($valid.Ticks -le 0) { throw 'Saved dynamic route lifetime has expired; reconnect the network to reacquire it' }
-$parameters=@{DestinationPrefix=$r.destination; NextHop=$r.nextHop; InterfaceIndex=$r.interfaceIndex; RouteMetric=$r.metric; Protocol=$r.protocol; Publish=$r.publish; ValidLifetime=$valid; PreferredLifetime=$preferred}
-if ($r.store -eq 'ActiveStore') { $parameters.PolicyStore='ActiveStore' }
-elseif ($r.store -ne 'PersistentStore') { throw 'Unsupported route store' }
-if ($r.store -eq 'PersistentStore') {
-  $copy=$r.PSObject.Copy(); $copy.store='ActiveStore'
-  $active=@(Get-Matching $copy)
-  foreach($item in $active) {
-    if (-not (Same-Attributes $item $r) -and ($null -eq $r.activeBefore -or -not (Same-Attributes $item $r.activeBefore))) { throw 'Active route changed before persistent creation' }
-  }
-}
-# Omitting PolicyStore creates persistent and active entries. Never pass
-# PersistentStore to New-NetRoute, which does not support that value.
-try { New-NetRoute @parameters | Out-Null }
-catch {
-  # Creation can report an active duplicate after writing persistent state.
-  # Accept only the exact desired entry observed below; otherwise keep backup.
-  if (@(Get-Matching $r).Count -eq 0) { throw }
-}
-$verified=Get-Matching $r
-if ($verified.Count -eq 0) { throw 'Route restoration was not confirmed' }
-foreach($item in $verified) { if ($item.RouteMetric -ne $r.metric -or $item.Protocol.ToString() -ne $r.protocol -or $item.Publish.ToString() -ne $r.publish) { throw 'Restored route attributes differ from recovery snapshot' } }
-Assert-Binding $r
-`

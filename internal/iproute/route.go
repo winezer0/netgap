@@ -188,22 +188,13 @@ func CheckAdminPermissionContext(ctx context.Context) bool {
 		return false
 	}
 	if runtime.GOOS == "windows" {
-		cmd := exec.CommandContext(ctx, "net", "session")
-		hideWindow(cmd)
-		return cmd.Run() == nil
+		return checkWindowsAdminPermission()
 	} else {
 		return checkLinuxAdminPermission()
 	}
 }
 
 // checkWindowsAdminPermission 检查Windows管理员权限
-func checkWindowsAdminPermission() bool {
-	cmd := exec.Command("net", "session")
-	hideWindow(cmd)
-	err := cmd.Run()
-	return err == nil
-}
-
 // checkLinuxAdminPermission 检查Linux管理员权限
 func checkLinuxAdminPermission() bool {
 	return os.Geteuid() == 0

@@ -12,6 +12,7 @@ const { notifications, removeNotification } = useNotification()
         :key="item.id"
         class="toast-item"
         :class="item.type"
+        :role="item.type === 'error' ? 'alert' : 'status'"
         @click="removeNotification(item.id)"
       >
         <span>{{ item.message }}</span>
@@ -36,6 +37,8 @@ const { notifications, removeNotification } = useNotification()
 .toast-item {
   pointer-events: auto;
   min-width: 240px;
+  max-width: min(480px, calc(100vw - 64px));
+  overflow-wrap: anywhere;
   padding: 10px 16px;
   border-radius: 8px;
   background: #1e2631;

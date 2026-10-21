@@ -13,6 +13,18 @@ import (
 // DisconnectAttemptTimeout bounds one automatic action, including lock waits.
 const DisconnectAttemptTimeout = 15 * time.Second
 
+// All automatic route failures share bounded exponential backoff. Failures
+// before a snapshot exists must not trigger a new action on every query tick.
+func NextDisconnectRetry(previous time.Duration) time.Duration {
+	if previous <= 0 {
+		return time.Second
+	}
+	if previous >= 15*time.Second {
+		return 30 * time.Second
+	}
+	return previous * 2
+}
+
 // Health separates successful exit checks from route protection progress.
 // Timestamps are Unix milliseconds; zero means no such observation this run.
 type Health struct {
