@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	logging "github.com/winezer0/zaplogs"
+	slogs "github.com/winezer0/slogs"
 
 	"netgap/internal/config"
 	"netgap/internal/ipchecker"
@@ -44,14 +44,14 @@ func main() {
 	}
 
 	// 初始化日志记录器
-	logCfg := logging.NewConfig(opts.LogLevel, opts.LogFile, opts.ConsoleFormat)
+	logCfg := slogs.NewConfig(opts.LogLevel, opts.LogFile, opts.ConsoleFormat)
 	logCfg.FileLevel = opts.LogLevel
 	logCfg.MaxBackups = 10
-	if err := logging.InitDefaultLogger(logCfg); err != nil {
+	if err := slogs.Init(logCfg); err != nil {
 		fmt.Printf("Failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
-	defer logging.CloseAll()
+	defer slogs.CloseAll()
 
 	// 处理 --api-list 选项
 	if opts.APIList {
@@ -151,12 +151,12 @@ func main() {
 	// 启动监控
 	resolver, err := localdb.NewResolver()
 	if err != nil {
-		logging.Errorf("failed to initialize local IP databases: %v", err)
+		slogs.Errorf("failed to initialize local IP databases: %v", err)
 		return
 	}
 	defer func() {
 		if err := resolver.Close(); err != nil {
-			logging.Errorf("failed to close local IP databases: %v", err)
+			slogs.Errorf("failed to close local IP databases: %v", err)
 		}
 	}()
 

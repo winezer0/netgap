@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	logging "github.com/winezer0/zaplogs"
+	slogs "github.com/winezer0/slogs"
 
 	"netgap/internal/guiapp/configstore"
 	"netgap/internal/guiapp/logbuffer"
@@ -129,7 +129,7 @@ func (s *Service) Shutdown() {
 		}
 	}
 	s.writeLog("INFO", "GUI application stopped")
-	_ = logging.CloseAll()
+	_ = slogs.CloseAll()
 }
 
 // State 返回当前前端视图状态。

@@ -3,7 +3,7 @@ package guiapp
 import (
 	"path/filepath"
 
-	logging "github.com/winezer0/zaplogs"
+	slogs "github.com/winezer0/slogs"
 	"netgap/internal/monitor"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -48,13 +48,13 @@ func (s *Service) EmitLogs() {
 func (s *Service) writeLog(level, message string) {
 	switch level {
 	case "ERROR":
-		logging.Errorf("%s", message)
+		slogs.Errorf("%s", message)
 	case "WARN":
-		logging.Warnf("%s", message)
+		slogs.Warnf("%s", message)
 	case "DEBUG":
-		logging.Debugf("%s", message)
+		slogs.Debugf("%s", message)
 	default:
-		logging.Infof("%s", message)
+		slogs.Infof("%s", message)
 	}
 	s.logs.Add(level, message)
 	s.emitLogs()
@@ -68,10 +68,10 @@ func (s *Service) LogUIError(message string) {
 // initLogger 初始化后端日志输出。
 func (s *Service) initLogger() {
 	logPath := filepath.Join(filepath.Dir(s.store.Path()), appName+".log")
-	logCfg := logging.NewConfig("info", logPath, "off")
+	logCfg := slogs.NewConfig("info", logPath, "off")
 	logCfg.FileLevel = "info"
 	logCfg.MaxBackups = 10
-	if err := logging.InitDefaultLogger(logCfg); err != nil {
+	if err := slogs.Init(logCfg); err != nil {
 		s.logs.Add("ERROR", "Failed to initialize logger: "+err.Error())
 		return
 	}

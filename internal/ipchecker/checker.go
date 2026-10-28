@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	logging "github.com/winezer0/zaplogs"
+	slogs "github.com/winezer0/slogs"
 
 	"netgap/internal/detector"
 	"netgap/internal/ipchecker/fetchers"
@@ -104,9 +104,9 @@ func GetExternalIPContext(ctx context.Context, proxy *detector.ProxyConfig, apiU
 		return "", ErrNoAvailableFetchers, ""
 	}
 
-	logging.Debugf("GetExternalIP: 可用查询器数量: %d", len(fetchers))
+	slogs.Debugf("GetExternalIP: 可用查询器数量: %d", len(fetchers))
 	for i, f := range fetchers {
-		logging.Debugf("  %d. %s (%s)", i+1, f.Name(), f.Key())
+		slogs.Debugf("  %d. %s (%s)", i+1, f.Name(), f.Key())
 	}
 
 	var lastErr error
@@ -129,11 +129,11 @@ func GetExternalIPContext(ctx context.Context, proxy *detector.ProxyConfig, apiU
 		}
 
 		if err != nil {
-			logging.Debugf("查询器 %s 结果: error=%v", fetcherName, err)
+			slogs.Debugf("查询器 %s 结果: error=%v", fetcherName, err)
 		} else if ip != "" {
-			logging.Debugf("查询器 %s 结果: IP=%s", fetcherName, ip)
+			slogs.Debugf("查询器 %s 结果: IP=%s", fetcherName, ip)
 		} else {
-			logging.Debugf("查询器 %s 结果: IP为空", fetcherName)
+			slogs.Debugf("查询器 %s 结果: IP为空", fetcherName)
 		}
 		var connectionErr *net.OpError
 		if proxy != nil && proxy.Enabled && !proxy.UsesURLRules() && errors.As(err, &connectionErr) && connectionErr.Op == "proxyconnect" {

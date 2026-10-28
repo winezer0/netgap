@@ -7,8 +7,8 @@ require (
 	github.com/gen2brain/beeep v0.11.3
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/wailsapp/wails/v2 v2.11.0
-	github.com/winezer0/ipinfo v0.0.3
-	github.com/winezer0/zaplogs v0.1.0
+	github.com/winezer0/ipinfo v0.1.0
+	github.com/winezer0/slogs v0.1.2
 	golang.org/x/net v0.35.0
 	golang.org/x/sys v0.34.0
 	golang.org/x/text v0.36.0
@@ -49,8 +49,5 @@ require (
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/wailsapp/go-webview2 v1.0.22 // indirect
 	github.com/wailsapp/mimetype v1.4.1 // indirect
-	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.28.0 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
-	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 )

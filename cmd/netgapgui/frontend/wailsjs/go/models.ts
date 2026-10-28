@@ -1,14 +1,14 @@
 export namespace autostart {
-
+	
 	export class Status {
 	    supported: boolean;
 	    registered: boolean;
 	    needsRepair: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Status(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.supported = source["supported"];
@@ -57,14 +57,14 @@ export namespace configstore {
 }
 
 export namespace elevation {
-
+	
 	export class RestartResult {
 	    cancelled: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new RestartResult(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.cancelled = source["cancelled"];
@@ -73,11 +73,11 @@ export namespace elevation {
 	export class Status {
 	    supported: boolean;
 	    isAdmin: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Status(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.supported = source["supported"];

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	logging "github.com/winezer0/zaplogs"
+	slogs "github.com/winezer0/slogs"
 	"netgap/internal/guiapp/configstore"
 	"netgap/internal/guiapp/logbuffer"
 )
@@ -18,13 +18,13 @@ func TestGUIErrorsWrittenToFile(t *testing.T) {
 		logs:  logbuffer.New(10),
 	}
 	s.initLogger()
-	t.Cleanup(func() { _ = logging.CloseAll() })
+	t.Cleanup(func() { _ = slogs.CloseAll() })
 	s.writeLog("ERROR", "backend operation failed")
 	s.LogUIError("操作失败: permission denied (100%)")
 	if _, count := s.logs.Snapshot(); count != 2 {
 		t.Fatalf("backend and UI errors were not both counted: %d", count)
 	}
-	if err := logging.Sync(); err != nil {
+	if err := slogs.CloseAll(); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, appName+".log"))

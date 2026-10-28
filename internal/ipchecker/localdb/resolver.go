@@ -16,7 +16,7 @@ import (
 	"github.com/winezer0/ipinfo/pkg/iplocate"
 	"github.com/winezer0/ipinfo/pkg/iplocate/ip2region"
 	"github.com/winezer0/ipinfo/pkg/queryip"
-	logging "github.com/winezer0/zaplogs"
+	slogs "github.com/winezer0/slogs"
 
 	"netgap/assets"
 	"netgap/internal/ipchecker/types"
@@ -45,10 +45,10 @@ func NewResolver() (*Resolver, error) {
 	if paths, found := findUserDatabasePaths(); found {
 		engine, err := openEngine(paths)
 		if err == nil {
-			logging.Infof("Using user IP databases from %s", filepath.Dir(paths.ipv4))
+			slogs.Infof("Using user IP databases from %s", filepath.Dir(paths.ipv4))
 			return &Resolver{engine: engine}, nil
 		}
-		logging.Warnf("User IP databases are unavailable, using embedded databases: %v", err)
+		slogs.Warnf("User IP databases are unavailable, using embedded databases: %v", err)
 	}
 
 	paths, err := prepareEmbeddedDatabases()
@@ -66,7 +66,7 @@ func NewResolver() (*Resolver, error) {
 		}
 	}
 
-	logging.Infof("Using embedded IP databases")
+	slogs.Infof("Using embedded IP databases")
 	return &Resolver{engine: engine}, nil
 }
 
