@@ -17,15 +17,17 @@ const (
 
 // Settings 表示 GUI 配置文件内容。
 type Settings struct {
-	Language           string   `json:"language" yaml:"language"`
-	Interval           int      `json:"interval" yaml:"interval"`
-	KeywordInput       string   `json:"keywordInput" yaml:"keyword_input"`
-	Regions            []string `json:"regions" yaml:"regions"`
-	APIEnabled         []string `json:"apiEnabled" yaml:"api_enabled"`
-	CustomAPIURL       string   `json:"customApiUrl" yaml:"custom_api_url"`
-	CloseAction        string   `json:"closeAction" yaml:"close_action"`
-	RemoveRouteOnMatch bool     `json:"removeRouteOnMatch" yaml:"remove_route_on_match"`
-	NotificationPopup  bool     `json:"notificationPopup" yaml:"notification_popup"`
+	AutoStartMonitoring bool     `json:"autoStartMonitoring" yaml:"auto_start_monitoring"`
+	StartMinimized      bool     `json:"startMinimized" yaml:"start_minimized"`
+	Language            string   `json:"language" yaml:"language"`
+	Interval            int      `json:"interval" yaml:"interval"`
+	KeywordInput        string   `json:"keywordInput" yaml:"keyword_input"`
+	Regions             []string `json:"regions" yaml:"regions"`
+	APIEnabled          []string `json:"apiEnabled" yaml:"api_enabled"`
+	CustomAPIURL        string   `json:"customApiUrl" yaml:"custom_api_url"`
+	CloseAction         string   `json:"closeAction" yaml:"close_action"`
+	RemoveRouteOnMatch  bool     `json:"removeRouteOnMatch" yaml:"remove_route_on_match"`
+	NotificationPopup   bool     `json:"notificationPopup" yaml:"notification_popup"`
 }
 
 // Store 表示 GUI 配置存储对象。
@@ -111,15 +113,17 @@ func NormalizeSettings(settings *Settings) *Settings {
 		return DefaultSettings()
 	}
 	result := &Settings{
-		Language:           normalizeLanguage(settings.Language),
-		Interval:           normalizeInterval(settings.Interval),
-		KeywordInput:       strings.TrimSpace(settings.KeywordInput),
-		Regions:            normalizeRegions(settings.Regions),
-		APIEnabled:         normalizeAPIEnabled(settings.APIEnabled),
-		CustomAPIURL:       normalizeCustomAPIURL(settings.CustomAPIURL),
-		CloseAction:        normalizeCloseAction(settings.CloseAction),
-		RemoveRouteOnMatch: settings.RemoveRouteOnMatch,
-		NotificationPopup:  settings.NotificationPopup,
+		AutoStartMonitoring: settings.AutoStartMonitoring,
+		StartMinimized:      settings.StartMinimized,
+		Language:            normalizeLanguage(settings.Language),
+		Interval:            normalizeInterval(settings.Interval),
+		KeywordInput:        strings.TrimSpace(settings.KeywordInput),
+		Regions:             normalizeRegions(settings.Regions),
+		APIEnabled:          normalizeAPIEnabled(settings.APIEnabled),
+		CustomAPIURL:        normalizeCustomAPIURL(settings.CustomAPIURL),
+		CloseAction:         normalizeCloseAction(settings.CloseAction),
+		RemoveRouteOnMatch:  settings.RemoveRouteOnMatch,
+		NotificationPopup:   settings.NotificationPopup,
 	}
 	if len(result.Regions) == 0 {
 		result.Regions = DefaultSettings().Regions

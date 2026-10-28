@@ -1,6 +1,29 @@
+export namespace autostart {
+
+	export class Status {
+	    supported: boolean;
+	    registered: boolean;
+	    needsRepair: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new Status(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.supported = source["supported"];
+	        this.registered = source["registered"];
+	        this.needsRepair = source["needsRepair"];
+	    }
+	}
+
+}
+
 export namespace configstore {
 	
 	export class Settings {
+	    autoStartMonitoring: boolean;
+	    startMinimized: boolean;
 	    language: string;
 	    interval: number;
 	    keywordInput: string;
@@ -17,6 +40,8 @@ export namespace configstore {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.autoStartMonitoring = source["autoStartMonitoring"];
+	        this.startMinimized = source["startMinimized"];
 	        this.language = source["language"];
 	        this.interval = source["interval"];
 	        this.keywordInput = source["keywordInput"];
@@ -26,6 +51,37 @@ export namespace configstore {
 	        this.closeAction = source["closeAction"];
 	        this.removeRouteOnMatch = source["removeRouteOnMatch"];
 	        this.notificationPopup = source["notificationPopup"];
+	    }
+	}
+
+}
+
+export namespace elevation {
+
+	export class RestartResult {
+	    cancelled: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new RestartResult(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.cancelled = source["cancelled"];
+	    }
+	}
+	export class Status {
+	    supported: boolean;
+	    isAdmin: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new Status(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.supported = source["supported"];
+	        this.isAdmin = source["isAdmin"];
 	    }
 	}
 
@@ -106,6 +162,8 @@ export namespace guiapp {
 	    }
 	}
 	export class ViewState {
+	    autoStartMonitoring: boolean;
+	    startMinimized: boolean;
 	    language: string;
 	    interval: number;
 	    keywordInput: string;
@@ -133,6 +191,8 @@ export namespace guiapp {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.autoStartMonitoring = source["autoStartMonitoring"];
+	        this.startMinimized = source["startMinimized"];
 	        this.language = source["language"];
 	        this.interval = source["interval"];
 	        this.keywordInput = source["keywordInput"];

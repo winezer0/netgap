@@ -2,9 +2,23 @@ package main
 
 import (
 	"netgap/internal/guiapp"
+	"netgap/internal/guiapp/autostart"
 	"netgap/internal/guiapp/configstore"
+	"netgap/internal/guiapp/elevation"
 	"netgap/internal/iproute"
 )
+
+func (a *App) GetElevationStatus() *elevation.Status { return a.service.GetElevationStatus() }
+
+func (a *App) RestartAsAdmin() (*elevation.RestartResult, error) { return a.service.RestartAsAdmin() }
+
+func (a *App) GetStartupStatus() (*autostart.Status, error) {
+	return a.service.GetStartupStatus()
+}
+
+func (a *App) SetStartupEnabled(enabled bool) (*autostart.Status, error) {
+	return a.service.SetStartupEnabled(enabled)
+}
 
 // SetWindowForeground reports WebView focus/visibility for notification routing.
 func (a *App) SetWindowForeground(foreground bool, revision uint64) {

@@ -39,14 +39,16 @@ func TestStoreSaveLoad(t *testing.T) {
 
 	store := NewStoreWithPath("netgapgui", filepath.Join(t.TempDir(), "netgapgui.yaml"))
 	input := &Settings{
-		Language:          "zh",
-		Interval:          5,
-		KeywordInput:      "广东",
-		Regions:           []string{"广东", "深圳"},
-		APIEnabled:        []string{"pcjson", "ip2location", "customip"},
-		CustomAPIURL:      "http://38.55.192.13:8080/ip?token=ipinfoapitoken",
-		CloseAction:       "tray",
-		NotificationPopup: true,
+		Language:            "zh",
+		Interval:            5,
+		KeywordInput:        "广东",
+		Regions:             []string{"广东", "深圳"},
+		APIEnabled:          []string{"pcjson", "ip2location", "customip"},
+		CustomAPIURL:        "http://38.55.192.13:8080/ip?token=ipinfoapitoken",
+		CloseAction:         "tray",
+		NotificationPopup:   true,
+		AutoStartMonitoring: true,
+		StartMinimized:      true,
 	}
 
 	if err := store.Save(input); err != nil {
@@ -79,6 +81,9 @@ func TestStoreLoadDefault(t *testing.T) {
 	}
 	if settings.CloseAction != "tray" {
 		t.Fatalf("expected default close action tray, got %s", settings.CloseAction)
+	}
+	if settings.AutoStartMonitoring || settings.StartMinimized {
+		t.Fatal("launch preferences must be opt-in by default")
 	}
 	if !settings.NotificationPopup {
 		t.Fatal("expected popup notifications to be enabled by default")

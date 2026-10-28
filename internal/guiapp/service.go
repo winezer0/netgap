@@ -29,14 +29,22 @@ const (
 
 // Service 表示 GUI 应用服务。
 type Service struct {
-	ctx      context.Context
-	store    *configstore.Store
-	logs     *logbuffer.Buffer
-	monitor  *monitoring.Manager
-	settings *configstore.Settings
-	resolver *localdb.Resolver
-	tray     *TrayController
-	mu       sync.RWMutex
+	ctx               context.Context
+	store             *configstore.Store
+	logs              *logbuffer.Buffer
+	monitor           *monitoring.Manager
+	settings          *configstore.Settings
+	resolver          *localdb.Resolver
+	tray              *TrayController
+	mu                sync.RWMutex
+	launchOnce        sync.Once
+	launchMu          sync.Mutex
+	frontendReady     bool
+	trayReady         bool
+	trayWaitExpired   bool
+	launchTimer       *time.Timer
+	restartMonitoring *bool
+	adminRestartBusy  atomic.Bool
 
 	alertMu              sync.Mutex
 	lastAlert            *Alert
@@ -95,9 +103,12 @@ func NewService() (*Service, error) {
 
 // Startup 记录 Wails 上下文并初始化日志。
 func (s *Service) Startup(ctx context.Context) {
+	s.launchMu.Lock()
 	s.ctx = ctx
-	s.windowHidden.Store(false)
+	s.windowHidden.Store(s.restartMonitoring == nil && s.Settings().StartMinimized)
 	s.writeLog("INFO", "GUI application started")
+	s.launchMu.Unlock()
+	go s.ApplyLaunchPreferences()
 }
 
 // Shutdown 停止后台任务并释放日志器。
@@ -106,7 +117,12 @@ func (s *Service) Shutdown() {
 	s.alertMu.Lock()
 	s.cancelAlertTimerLocked()
 	s.alertMu.Unlock()
+	s.launchMu.Lock()
+	if s.launchTimer != nil {
+		s.launchTimer.Stop()
+	}
 	s.monitor.Stop()
+	s.launchMu.Unlock()
 	if s.resolver != nil {
 		if err := s.resolver.Close(); err != nil {
 			s.writeLog("ERROR", "Failed to close local IP databases: "+err.Error())
@@ -126,26 +142,28 @@ func (s *Service) State() *ViewState {
 	latestAlert, alertUnread, alertRevision := s.alertSnapshot()
 	lines, errorCount := s.logs.Snapshot()
 	return &ViewState{
-		Language:           settings.Language,
-		Interval:           settings.Interval,
-		KeywordInput:       settings.KeywordInput,
-		Regions:            append([]string(nil), settings.Regions...),
-		APIEnabled:         append([]string(nil), settings.APIEnabled...),
-		CustomAPIURL:       settings.CustomAPIURL,
-		CloseAction:        settings.CloseAction,
-		RemoveRouteOnMatch: settings.RemoveRouteOnMatch,
-		NotificationPopup:  settings.NotificationPopup,
-		Logs:               lines,
-		ErrorCount:         errorCount,
-		ConfigPath:         s.store.Path(),
-		IsAdmin:            isAdmin(),
-		Running:            running,
-		StatusText:         runningText(running),
-		PermissionText:     permissionText(isAdmin()),
-		Health:             s.monitor.Health(),
-		LatestAlert:        latestAlert,
-		AlertUnread:        alertUnread,
-		AlertRevision:      alertRevision,
+		AutoStartMonitoring: settings.AutoStartMonitoring,
+		StartMinimized:      settings.StartMinimized,
+		Language:            settings.Language,
+		Interval:            settings.Interval,
+		KeywordInput:        settings.KeywordInput,
+		Regions:             append([]string(nil), settings.Regions...),
+		APIEnabled:          append([]string(nil), settings.APIEnabled...),
+		CustomAPIURL:        settings.CustomAPIURL,
+		CloseAction:         settings.CloseAction,
+		RemoveRouteOnMatch:  settings.RemoveRouteOnMatch,
+		NotificationPopup:   settings.NotificationPopup,
+		Logs:                lines,
+		ErrorCount:          errorCount,
+		ConfigPath:          s.store.Path(),
+		IsAdmin:             isAdmin(),
+		Running:             running,
+		StatusText:          runningText(running),
+		PermissionText:      permissionText(isAdmin()),
+		Health:              s.monitor.Health(),
+		LatestAlert:         latestAlert,
+		AlertUnread:         alertUnread,
+		AlertRevision:       alertRevision,
 	}
 }
 
@@ -166,13 +184,14 @@ func (s *Service) SaveSettings(input *configstore.Settings) (*ViewState, error) 
 		}
 	}
 	s.mu.Lock()
+	if err := s.store.Save(normalized); err != nil {
+		s.mu.Unlock()
+		return nil, err
+	}
 	s.settings = normalized
 	current := s.settings
 	s.mu.Unlock()
 
-	if err := s.store.Save(current); err != nil {
-		return nil, err
-	}
 	s.mu.RLock()
 	tray := s.tray
 	s.mu.RUnlock()

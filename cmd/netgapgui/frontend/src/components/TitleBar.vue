@@ -1,5 +1,6 @@
 <script setup>
 import appIcon from '../assets/images/title-icon.png'
+import AdminRestartButton from './AdminRestartButton.vue'
 import {
   WindowGetSize,
   WindowSetSize,
@@ -14,12 +15,15 @@ const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
 defineProps({
   language: { type: String, required: true },
   closeAction: { type: String, required: true },
+  isAdmin: { type: Boolean, default: false },
+  translate: { type: Function, default: (key) => key },
 })
 
 defineEmits([
   'toggle-language',
   'open-settings',
   'close-window',
+  'hide-to-tray',
 ])
 
 let isMaximised = false
@@ -77,6 +81,7 @@ const toggleMaximise = async () => {
       {{ language === 'zh' ? 'ZH' : 'EN' }}
     </button>
     <div class="windowActions">
+      <AdminRestartButton :is-admin="isAdmin" :translate="translate" />
       <button
         class="iconBtn"
         @click="$emit('open-settings')"
@@ -98,6 +103,15 @@ const toggleMaximise = async () => {
         :title="language === 'zh' ? (closeAction === 'tray' ? '最小化到托盘' : '关闭并退出程序') : (closeAction === 'tray' ? 'Minimize to tray' : 'Quit application')"
       >
         {{ closeAction === 'tray' ? 'o' : '×' }}
+      </button>
+      <button
+        class="iconBtn trayBtn"
+        type="button"
+        @click="$emit('hide-to-tray')"
+        :title="language === 'zh' ? '最小化到托盘' : 'Minimize to tray'"
+        :aria-label="language === 'zh' ? '最小化到托盘' : 'Minimize to tray'"
+      >
+        o
       </button>
     </div>
   </header>

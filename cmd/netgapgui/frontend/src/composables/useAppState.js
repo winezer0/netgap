@@ -15,6 +15,8 @@ const state = reactive({
   closeAction: 'tray',
   removeRouteOnMatch: true,
   notificationPopup: true,
+  autoStartMonitoring: false,
+  startMinimized: false,
   logs: [],
   errorCount: 0,
   isAdmin: false,
@@ -57,6 +59,8 @@ function mergeState(payload) {
   state.closeAction = payload.closeAction ?? state.closeAction
   state.removeRouteOnMatch = payload.removeRouteOnMatch ?? state.removeRouteOnMatch
   state.notificationPopup = payload.notificationPopup ?? state.notificationPopup
+  state.autoStartMonitoring = payload.autoStartMonitoring ?? state.autoStartMonitoring
+  state.startMinimized = payload.startMinimized ?? state.startMinimized
   state.logs = payload.logs ?? state.logs
   state.errorCount = Math.max(state.errorCount, payload.errorCount ?? 0)
   state.isAdmin = payload.isAdmin ?? state.isAdmin
@@ -81,6 +85,8 @@ async function saveSettings(overrides = {}) {
     closeAction: overrides.closeAction ?? state.closeAction,
     removeRouteOnMatch: overrides.removeRouteOnMatch ?? state.removeRouteOnMatch,
     notificationPopup: overrides.notificationPopup ?? state.notificationPopup,
+    autoStartMonitoring: overrides.autoStartMonitoring ?? state.autoStartMonitoring,
+    startMinimized: overrides.startMinimized ?? state.startMinimized,
   }))
 }
 

@@ -14,12 +14,20 @@ export function GetDefaultRouteInfo() {
   return window['go']['main']['App']['GetDefaultRouteInfo']();
 }
 
+export function GetElevationStatus() {
+  return window['go']['main']['App']['GetElevationStatus']();
+}
+
 export function GetInitialState() {
   return window['go']['main']['App']['GetInitialState']();
 }
 
 export function GetProxyConfigInfo() {
   return window['go']['main']['App']['GetProxyConfigInfo']();
+}
+
+export function GetStartupStatus() {
+  return window['go']['main']['App']['GetStartupStatus']();
 }
 
 export function HideToTray() {
@@ -46,12 +54,20 @@ export function RemoveRegion(arg1) {
   return window['go']['main']['App']['RemoveRegion'](arg1);
 }
 
+export function RestartAsAdmin() {
+  return window['go']['main']['App']['RestartAsAdmin']();
+}
+
 export function RestoreDefaultRoute() {
   return window['go']['main']['App']['RestoreDefaultRoute']();
 }
 
 export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
+}
+
+export function SetStartupEnabled(arg1) {
+  return window['go']['main']['App']['SetStartupEnabled'](arg1);
 }
 
 export function SetWindowForeground(arg1, arg2) {

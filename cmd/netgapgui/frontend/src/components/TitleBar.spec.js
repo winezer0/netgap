@@ -27,6 +27,10 @@ vi.mock('../../wailsjs/runtime/runtime', () => ({
   ScreenGetAll,
 }))
 
+vi.mock('../services/backend', () => ({
+  backend: { getElevationStatus: vi.fn().mockResolvedValue({ supported: false, isAdmin: false }) },
+}))
+
 describe('TitleBar', () => {
   beforeEach(() => {
     WindowGetSize.mockResolvedValue({ w: 640, h: 480 })
@@ -46,7 +50,7 @@ describe('TitleBar', () => {
 
   it('emits settings and close actions from the top right buttons', async () => {
     const wrapper = mount(TitleBar, { props: { language: 'en', closeAction: 'tray' } })
-    const buttons = wrapper.findAll('.windowActions button')
+    const buttons = wrapper.findAll('.windowActions .iconBtn')
     await buttons[0].trigger('click')
     await buttons[2].trigger('click')
 
@@ -57,7 +61,7 @@ describe('TitleBar', () => {
 
   it('preserves and restores the window bounds across maximize and restore', async () => {
     const wrapper = mount(TitleBar, { props: { language: 'en', closeAction: 'quit' } })
-    const maximize = wrapper.findAll('.windowActions button')[1]
+    const maximize = wrapper.findAll('.windowActions .iconBtn')[1]
 
     await maximize.trigger('click')
     await flushPromises()

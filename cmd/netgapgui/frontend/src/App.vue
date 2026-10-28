@@ -8,6 +8,7 @@ import LogPanel from './components/LogPanel.vue'
 import StatusBar from './components/StatusBar.vue'
 import NotificationToast from './components/NotificationToast.vue'
 import { useAppState } from './composables/useAppState'
+import { useNotification } from './composables/useNotification'
 
 const {
   state,
@@ -34,8 +35,12 @@ const closeWindow = async () => {
 }
 
 const savePreferences = async (preferences) => {
-  await saveSettings(preferences)
-  settingsVisible.value = false
+  try {
+    await saveSettings(preferences)
+    settingsVisible.value = false
+  } catch (error) {
+    useNotification().addNotification(`${t('settingsSaveFailed')}: ${error}`, 'error')
+  }
 }
 </script>
 
@@ -44,9 +49,12 @@ const savePreferences = async (preferences) => {
     <TitleBar
       :language="state.language"
       :close-action="state.closeAction"
+      :is-admin="state.isAdmin"
+      :translate="t"
       @toggle-language="toggleLanguage"
       @open-settings="settingsVisible = true"
       @close-window="closeWindow"
+      @hide-to-tray="hideToTray"
     />
     <SettingsDialog
       :visible="settingsVisible"
@@ -54,6 +62,8 @@ const savePreferences = async (preferences) => {
       :close-action="state.closeAction"
       :remove-route-on-match="state.removeRouteOnMatch"
       :notification-popup="state.notificationPopup"
+      :auto-start-monitoring="state.autoStartMonitoring ?? false"
+      :start-minimized="state.startMinimized ?? false"
       :translate="t"
       @cancel="settingsVisible = false"
       @save="savePreferences"

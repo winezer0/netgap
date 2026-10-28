@@ -114,6 +114,7 @@ func (t *TrayController) onReady() {
 	t.items = trayMenuItems{openItem, lastAlertItem, removeItem, restoreItem, startItem, stopItem, quitItem}
 	t.menuMu.Unlock()
 	t.RefreshLanguage()
+	t.service.MarkTrayReady()
 
 	go func() {
 		for {

@@ -30,6 +30,7 @@ func (a *App) DomReady(ctx context.Context) {
 	a.service.EmitState()
 	a.service.EmitLogs()
 	a.tray.Start()
+	a.service.MarkFrontendReady()
 }
 
 // Shutdown 处理应用关闭生命周期。
