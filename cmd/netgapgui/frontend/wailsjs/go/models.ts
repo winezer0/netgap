@@ -116,6 +116,7 @@ export namespace guiapp {
 	    removeRouteOnMatch: boolean;
 	    notificationPopup: boolean;
 	    logs: string[];
+	    errorCount: number;
 	    configPath: string;
 	    isAdmin: boolean;
 	    running: boolean;
@@ -142,6 +143,7 @@ export namespace guiapp {
 	        this.removeRouteOnMatch = source["removeRouteOnMatch"];
 	        this.notificationPopup = source["notificationPopup"];
 	        this.logs = source["logs"];
+	        this.errorCount = source["errorCount"];
 	        this.configPath = source["configPath"];
 	        this.isAdmin = source["isAdmin"];
 	        this.running = source["running"];

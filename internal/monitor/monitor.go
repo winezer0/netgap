@@ -108,14 +108,16 @@ func (c *Checker) CheckProxyStatusResultContext(ctx context.Context, cfg *config
 	}
 	result.IPInfo = ipInfo
 
-	isLocal := false
 	for _, region := range cfg.Regions {
-		if strings.Contains(ipInfo.Region, region) || strings.Contains(ipInfo.City, region) {
-			isLocal = true
+		if strings.Contains(ipInfo.Region, region) {
+			result.IsLocal, result.MatchedField, result.MatchedKeyword = true, "Province", region
+			break
+		}
+		if strings.Contains(ipInfo.City, region) {
+			result.IsLocal, result.MatchedField, result.MatchedKeyword = true, "City", region
 			break
 		}
 	}
-	result.IsLocal = isLocal
 	if result.ValidateCurrent != nil {
 		if err := result.ValidateCurrent(ctx); err != nil {
 			return result, err
@@ -259,7 +261,15 @@ func (c *Checker) CheckProxyStatus(ctx context.Context, cfg *config.Config) (boo
 		fetcherName = result.FetcherName
 	}
 	if err != nil {
-		logging.Errorf("[int: %s] obtain external IP info error: %v", fetcherName, err)
+		level, message := CheckFailureLog(fetcherName, err)
+		switch level {
+		case "WARN":
+			logging.Warnf("%s", message)
+		case "INFO":
+			logging.Infof("%s", message)
+		default:
+			logging.Errorf("%s", message)
+		}
 		return false, err, fetcherName
 	}
 
@@ -274,8 +284,11 @@ func (c *Checker) CheckProxyStatus(ctx context.Context, cfg *config.Config) (boo
 		}
 	}
 
-	logging.Infof("[int: %s] Current IP: %s, Region: %s|%s|%s, ISN: %s",
-		fetcherName, ipInfo.IP, ipInfo.Country, ipInfo.Region, ipInfo.City, ipInfo.Isp)
+	logging.Infof("Exit observed ipSource[%s] locationSource[localdb] area[%s] ip[%s]",
+		fetcherName, result.LocationTag(), ipInfo.IP)
+	if result.IsLocal {
+		logging.Warnf("Region keyword matched %s", result.MatchTag())
+	}
 	logging.Infof("[int: %s] Actual request path: %s", fetcherName, result.PathTag())
 	if result.ObservationOnly != "" {
 		if result.IsLocal {

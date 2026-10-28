@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run lint && npm test && vite build",
-    "lint": "eslint src",
+    "build": "npm run check && npm run compile",
+    "check": "npm run lint && npm test && node --test ../build.test.mjs",
+    "compile": "vite build",
+    "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
     "preview": "vite preview"
   },

@@ -43,6 +43,7 @@ describe('useAppState', () => {
     if (app) {
       app.state.health = { runId: 0, revision: 0, running: false, phase: 'stopped', disconnectState: 'idle' }
       app.state.running = false
+      app.state.errorCount = 0
     }
     unsubscribe = {}
     for (const name of ['onState', 'onHealth', 'onLogs', 'onAlert']) {
@@ -71,6 +72,27 @@ describe('useAppState', () => {
   afterEach(() => {
     wrapper?.unmount()
     wrapper = undefined
+  })
+
+  it('keeps session error counts after recovery, clearing logs and late state updates', async () => {
+    wrapper = mount(Harness)
+    await flushPromises()
+    const onLogs = backend.onLogs.mock.calls[0][0]
+    onLogs(['operation failed'], 3)
+    expect(app.state.errorCount).toBe(3)
+
+    backend.onHealth.mock.calls[0][0]({ runId: 1, revision: 2, running: true, phase: 'healthy', consecutiveFailures: 0 })
+    expect(app.state.errorCount).toBe(3)
+
+    onLogs([], 3)
+    expect(app.state.logs).toEqual([])
+    expect(app.state.errorCount).toBe(3)
+
+    backend.onState.mock.calls[0][0]({ errorCount: 1 })
+    onLogs(['late log snapshot'], 2)
+    expect(app.state.errorCount).toBe(3)
+    onLogs(['next failure'], 4)
+    expect(app.state.errorCount).toBe(4)
   })
 
   it('loads initial state and subscribes to live state and logs', async () => {

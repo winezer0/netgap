@@ -77,7 +77,7 @@ jobs:
           CGO_ENABLED: "1"
         run: go build ./internal/... ./cmd/netgap
 
-      - name: Build GUI
+      - name: Check frontend and build GUI
         working-directory: cmd/netgapgui
         env:
           VITE_APP_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.release.tag_name }}

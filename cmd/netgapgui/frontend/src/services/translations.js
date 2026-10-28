@@ -2,7 +2,8 @@ export const translations = {
   zh: {
     healthStatus: '检测状态：',
     healthNever: '暂无',
-    healthFailures: '连续失败',
+    healthFailures: '连续检测失败',
+    sessionErrors: '本次启动累计错误：',
     healthLastAttempt: '最近尝试：',
     healthLastSuccess: '最近成功：',
     healthRouteAction: '最近路由动作：',
@@ -93,7 +94,8 @@ export const translations = {
   en: {
     healthStatus: 'Checks:',
     healthNever: 'None',
-    healthFailures: 'Consecutive failures',
+    healthFailures: 'Consecutive check failures',
+    sessionErrors: 'Errors since launch:',
     healthLastAttempt: 'Last attempt:',
     healthLastSuccess: 'Last success:',
     healthRouteAction: 'Last route action:',

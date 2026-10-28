@@ -8,9 +8,10 @@ import (
 
 // Buffer 表示线程安全的日志缓存。
 type Buffer struct {
-	mu       sync.RWMutex
-	capacity int
-	lines    []string
+	mu         sync.RWMutex
+	capacity   int
+	lines      []string
+	errorCount uint64
 }
 
 // New 创建日志缓存对象。
@@ -29,6 +30,9 @@ func (b *Buffer) Add(level, message string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	if level == "ERROR" {
+		b.errorCount++
+	}
 	line := fmt.Sprintf("%s [%s] %s",
 		time.Now().Format("15:04:05"), level, message)
 	b.lines = append(b.lines, line)
@@ -39,12 +43,19 @@ func (b *Buffer) Add(level, message string) {
 
 // List 返回当前日志快照。
 func (b *Buffer) List() []string {
+	lines, _ := b.Snapshot()
+	return lines
+}
+
+// Snapshot returns logs and the process-lifetime ERROR count together.
+// Trimming or clearing the visible log history does not reset this count.
+func (b *Buffer) Snapshot() ([]string, uint64) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
 	result := make([]string, len(b.lines))
 	copy(result, b.lines)
-	return result
+	return result, b.errorCount
 }
 
 // Clear 清空日志缓存。

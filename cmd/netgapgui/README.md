@@ -15,6 +15,8 @@ node build.mjs
 
 构建脚本会优先使用 `VITE_APP_VERSION`，未设置时读取 Git 标签及提交信息；没有 Git 信息时显示 `dev`。该值会编入标题栏，并同步更新构建时的 Wails 产品版本元数据。
 
+所有 GUI 打包入口（`node build.mjs`、`wails-build.bat`、Native CI 和 Release CI）都会先执行 `npm ci` 和 `npm run check`。检查包括全目录 ESLint（不允许警告）及前端测试，任一失败立即停止打包；传入 `-s` 也不能跳过检查。直接执行普通 `wails build` 时，`frontend:build` 同样通过 `npm run build` 执行检查。CI 的检查输出保存在 GUI 构建日志中。
+
 在仓库根目录启动构建好的程序：
 
 ```powershell

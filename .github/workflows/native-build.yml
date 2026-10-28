@@ -126,23 +126,14 @@ jobs:
         working-directory: cmd/netgapgui
         run: wails generate module
 
-      - name: Install frontend dependencies
-        working-directory: cmd/netgapgui/frontend
-        run: npm ci
-
-      # The project's npm build script also runs tests. This job only compiles.
-      - name: Compile frontend
-        working-directory: cmd/netgapgui/frontend
-        run: npx --no-install vite build
-
-      - name: Compile and package native GUI
+      - name: Check frontend, compile and package native GUI
         working-directory: cmd/netgapgui
         env:
           WAILS_TAGS: ${{ matrix.wails_tags || '' }}
         run: |
           args=()
           if [[ -n "$WAILS_TAGS" ]]; then args+=(-tags "$WAILS_TAGS"); fi
-          node build.mjs -clean -m -s -skipbindings -platform "${{ matrix.platform }}" "${args[@]}" 2>&1 | tee ../../build/evidence/gui-build.txt
+          node build.mjs -clean -m -skipbindings -platform "${{ matrix.platform }}" "${args[@]}" 2>&1 | tee ../../build/evidence/gui-build.txt
 
       # Archive first: artifact ZIPs do not retain Unix executable permissions.
       - name: Archive Linux binaries
@@ -183,13 +174,6 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && runner.os == 'macOS'
         run: go test -tags acceptance -race -v ./internal/macnetwork -run TestNativeNetworkWatcherRecoversAfterInvalidation -count=1 -timeout=30s 2>&1 | tee build/evidence/macos-watcher-acceptance.txt
 
-      - name: "Manual acceptance: frontend interaction tests"
-        if: github.event_name == 'workflow_dispatch'
-        working-directory: cmd/netgapgui/frontend
-        run: |
-          npm run lint 2>&1 | tee ../../../build/evidence/frontend-lint.txt
-          npm test -- --reporter=verbose 2>&1 | tee ../../../build/evidence/frontend-tests.txt
-
       - name: "Install virtual display for manual Linux GUI startup"
         if: github.event_name == 'workflow_dispatch' && runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y xvfb
@@ -226,8 +210,9 @@ jobs:
           {
             echo "## Native ${{ matrix.id }}: $JOB_STATUS"
             echo "Commit: $GITHUB_SHA"
+            echo "Frontend lint, interaction tests and build-gate tests are mandatory for every GUI build; output is included in gui-build.txt."
             if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
-              echo "Manual acceptance includes frontend interaction tests, native platform checks where applicable, and packaged GUI startup smoke on Windows/Linux."
+              echo "Manual acceptance adds native platform checks where applicable and packaged GUI startup smoke on Windows/Linux."
               if [[ "$RUNNER_OS" == macOS ]]; then
                 echo "macOS GUI process launch is unavailable on the hosted runner; app bundle/architecture checks and native watcher tests ran."
               fi

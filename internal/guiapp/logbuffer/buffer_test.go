@@ -1,6 +1,47 @@
 package logbuffer
 
-import "testing"
+import (
+	"sync"
+	"testing"
+)
+
+func TestErrorCountSurvivesLogTrimmingAndClearing(t *testing.T) {
+	buffer := New(1)
+	buffer.Add("ERROR", "operation failed")
+	buffer.Add("INFO", "query succeeded")
+	buffer.Add("WARN", "network changed")
+	lines, count := buffer.Snapshot()
+	if len(lines) != 1 || count != 1 {
+		t.Fatalf("trimming lost error count: %v %d", lines, count)
+	}
+	buffer.Clear()
+	lines, count = buffer.Snapshot()
+	if len(lines) != 0 || count != 1 {
+		t.Fatalf("clearing logs reset session count: %v %d", lines, count)
+	}
+	buffer.Add("ERROR", "another failure")
+	_, count = buffer.Snapshot()
+	if count != 2 {
+		t.Fatalf("expected two session errors, got %d", count)
+	}
+}
+
+func TestConcurrentErrorsAreCountedOnce(t *testing.T) {
+	buffer := New(5)
+	var workers sync.WaitGroup
+	for range 100 {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			buffer.Add("ERROR", "concurrent error")
+		}()
+	}
+	workers.Wait()
+	_, count := buffer.Snapshot()
+	if count != 100 {
+		t.Fatalf("lost concurrent errors: %d", count)
+	}
+}
 
 // TestBufferAddAndTrim 验证日志缓存的容量裁剪。
 func TestBufferAddAndTrim(t *testing.T) {

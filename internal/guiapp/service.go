@@ -35,6 +35,7 @@ type Service struct {
 	monitor  *monitoring.Manager
 	settings *configstore.Settings
 	resolver *localdb.Resolver
+	tray     *TrayController
 	mu       sync.RWMutex
 
 	alertMu              sync.Mutex
@@ -55,6 +56,7 @@ type Service struct {
 	windowForeground     atomic.Bool
 	closing              atomic.Bool
 	notificationBusy     atomic.Bool
+	lastAlertDialogOpen  atomic.Bool
 }
 
 // NewService 创建 GUI 服务对象。
@@ -122,6 +124,7 @@ func (s *Service) State() *ViewState {
 
 	running := s.monitor.Running()
 	latestAlert, alertUnread, alertRevision := s.alertSnapshot()
+	lines, errorCount := s.logs.Snapshot()
 	return &ViewState{
 		Language:           settings.Language,
 		Interval:           settings.Interval,
@@ -132,7 +135,8 @@ func (s *Service) State() *ViewState {
 		CloseAction:        settings.CloseAction,
 		RemoveRouteOnMatch: settings.RemoveRouteOnMatch,
 		NotificationPopup:  settings.NotificationPopup,
-		Logs:               s.logs.List(),
+		Logs:               lines,
+		ErrorCount:         errorCount,
 		ConfigPath:         s.store.Path(),
 		IsAdmin:            isAdmin(),
 		Running:            running,
@@ -168,6 +172,12 @@ func (s *Service) SaveSettings(input *configstore.Settings) (*ViewState, error) 
 
 	if err := s.store.Save(current); err != nil {
 		return nil, err
+	}
+	s.mu.RLock()
+	tray := s.tray
+	s.mu.RUnlock()
+	if tray != nil {
+		tray.RefreshLanguage()
 	}
 	if s.monitor != nil {
 		s.monitor.SetRemoveRouteOnMatch(current.RemoveRouteOnMatch)

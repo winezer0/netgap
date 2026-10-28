@@ -16,6 +16,7 @@ const state = reactive({
   removeRouteOnMatch: true,
   notificationPopup: true,
   logs: [],
+  errorCount: 0,
   isAdmin: false,
   running: false,
   latestAlert: null,
@@ -57,6 +58,7 @@ function mergeState(payload) {
   state.removeRouteOnMatch = payload.removeRouteOnMatch ?? state.removeRouteOnMatch
   state.notificationPopup = payload.notificationPopup ?? state.notificationPopup
   state.logs = payload.logs ?? state.logs
+  state.errorCount = Math.max(state.errorCount, payload.errorCount ?? 0)
   state.isAdmin = payload.isAdmin ?? state.isAdmin
   if ('latestAlert' in payload) mergeAlertState(payload)
   if (payload.health) mergeHealth(payload.health)
@@ -117,8 +119,9 @@ export function useAppState() {
     const { addNotification } = useNotification()
     listeners.push(backend.onState((payload) => mergeState(payload)))
     listeners.push(backend.onHealth((payload) => mergeHealth(payload)))
-    listeners.push(backend.onLogs((payload) => {
+    listeners.push(backend.onLogs((payload, errorCount) => {
       state.logs = payload ?? []
+      state.errorCount = Math.max(state.errorCount, errorCount ?? 0)
     }))
     listeners.push(backend.onAlert((payload) => {
       if (!state.notificationPopup && !payload?.historical) return

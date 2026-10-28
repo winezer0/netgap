@@ -81,6 +81,7 @@ const savePreferences = async (preferences) => {
       :health="state.health"
       :interval="state.interval"
       :alert-unread="state.alertUnread"
+      :error-count="state.errorCount"
       :translate="t"
     />
     <NotificationToast />

@@ -257,44 +257,53 @@ func (s *Service) SetWindowForeground(foreground bool, revision uint64) {
 // ShowLastAlert is an explicit user action, including when automatic popups
 // are disabled. Preserve the original occurrence time and mark it as history.
 func (s *Service) ShowLastAlert() {
-	alert, _, _ := s.alertSnapshot()
-	s.ShowWindow()
-	if alert == nil || s.ctx == nil || s.closing.Load() {
+	if s.ctx == nil || s.ctx.Err() != nil || s.closing.Load() || !s.lastAlertDialogOpen.CompareAndSwap(false, true) {
 		return
 	}
+	defer s.lastAlertDialogOpen.Store(false)
+	s.ShowWindow()
+	options, eventID := s.lastAlertDialogOptions()
+	// A native dialog stays visible until dismissed and does not depend on
+	// WebView event subscription timing or the automatic popup setting.
+	if _, err := runtime.MessageDialog(s.ctx, options); err != nil {
+		s.writeLog("WARN", "Failed to show latest alert; record retained: "+err.Error())
+		return
+	}
+	if eventID != 0 {
+		s.markAlertDelivered(eventID)
+	}
+}
+
+func (s *Service) lastAlertDialogOptions() (runtime.MessageDialogOptions, uint64) {
+	texts := textsFor(s.Settings().Language)
+	options := runtime.MessageDialogOptions{
+		Type: runtime.InfoDialog, Title: texts.LatestAlertTitle, Message: texts.NoRecentAlert,
+	}
+	alert, _, _ := s.alertSnapshot()
+	if alert == nil {
+		return options, 0
+	}
 	alert.Historical = true
-	alert.Message = s.formatMatchAlert(*alert)
-	runtime.EventsEmit(s.ctx, eventAlertName, alert)
-	s.markAlertDelivered(alert.EventID)
+	options.Message = formatMatchAlertWithTexts(*alert, texts)
+	return options, alert.EventID
 }
 
 func (s *Service) formatMatchAlert(alert Alert) string {
-	if s.Settings().Language == "en" {
-		status := map[string]string{"alerts_only": "alerts only", "permission": "insufficient permission; alerts only",
-			"pac_observation": "PAC/WPAD not applied; system-route exit; alerts only", "pending": "automatic disconnection pending",
-			"running": "automatic disconnection in progress", "completed": "disconnected; recovery records saved", "failed": "automatic disconnection failed"}[alert.Protection]
-		prefix := "Monitored region matched"
-		if alert.Historical {
-			prefix = "Previous alert"
-			if alert.Active {
-				status += "; still matched at last check"
-			} else {
-				status += "; no active match observation"
-			}
-		}
-		return fmt.Sprintf("%s · %s · IP %s · %s · %s · %s", prefix,
-			time.UnixMilli(alert.Timestamp).Format("2006-01-02 15:04:05"), alert.IP, alert.Location, alert.Path, status)
+	return formatMatchAlertWithTexts(alert, textsFor(s.Settings().Language))
+}
+
+func formatMatchAlertWithTexts(alert Alert, texts guiTexts) string {
+	status := texts.Protection[alert.Protection]
+	if status == "" {
+		status = texts.UnknownProtection
 	}
-	status := map[string]string{"alerts_only": "仅告警", "permission": "权限不足，仅告警",
-		"pac_observation": "未应用 PAC/WPAD，系统路由出口，仅告警", "pending": "自动断网待处理",
-		"running": "正在自动断网", "completed": "断网完成，恢复记录已保存", "failed": "自动断网失败"}[alert.Protection]
-	prefix := "命中监测地区"
+	prefix := texts.MatchedRegion
 	if alert.Historical {
-		prefix = "历史提醒"
+		prefix = texts.HistoricalAlert
 		if alert.Active {
-			status += "；最近检测仍命中"
+			status += texts.StillMatched
 		} else {
-			status += "；当前无有效命中记录"
+			status += texts.NoActiveMatch
 		}
 	}
 	return fmt.Sprintf("%s · %s · IP %s · %s · %s · %s", prefix,

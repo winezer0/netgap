@@ -8,6 +8,7 @@ const props = defineProps({
   health: { type: Object, default: () => ({}) },
   interval: { type: Number, default: 3 },
   alertUnread: { type: Boolean, default: false },
+  errorCount: { type: Number, default: 0 },
 })
 
 const now = ref(Date.now())
@@ -23,6 +24,9 @@ const failureText = (kind) => props.translate(`failure_${kind}`)
 
 <template>
   <footer class="statusBar">
+    <span class="healthDetail" :class="{ userText: errorCount > 0 }" role="status">
+      {{ translate('sessionErrors') }} {{ errorCount }}
+    </span>
     <span v-if="alertUnread" class="healthDetail userText" role="status">{{ translate('unreadMatchAlert') }}</span>
     <span class="healthPermission">
       {{ translate('currentPermission') }}

@@ -326,7 +326,8 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 			}
 			return false
 		}
-		m.writeRunLog(run, "ERROR", fmt.Sprintf("Check failed via %s [state=%s]: %v", fetcherName, monitorcore.FailureKind(err), err))
+		level, message := monitorcore.CheckFailureLog(fetcherName, err)
+		m.writeRunLog(run, level, message)
 		return false
 	}
 	if run.proxyUnavailable {
@@ -350,11 +351,11 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 				m.notifyHealth(run)
 			}
 		}
-		m.writeRunLog(run, "INFO", fmt.Sprintf("Exit outside monitored regions api[%s] area[%s] ip[%s] path[%s]", fetcherName, location, ip, result.PathTag()))
+		m.writeRunLog(run, "INFO", fmt.Sprintf("Exit outside monitored regions ipSource[%s] locationSource[localdb] area[%s] ip[%s] path[%s]", fetcherName, location, ip, result.PathTag()))
 		return false
 	}
 
-	m.writeRunLog(run, "WARN", fmt.Sprintf("Local exit detected api[%s] area[%s] ip[%s] path[%s]", fetcherName, location, ip, result.PathTag()))
+	m.writeRunLog(run, "WARN", fmt.Sprintf("Local exit detected ipSource[%s] locationSource[localdb] area[%s] ip[%s] path[%s] %s", fetcherName, location, ip, result.PathTag(), result.MatchTag()))
 	if result.ObservationOnly != "" {
 		return false
 	}

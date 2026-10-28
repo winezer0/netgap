@@ -35,7 +35,8 @@ func (s *Service) emitLogs() {
 	if s.ctx == nil {
 		return
 	}
-	runtime.EventsEmit(s.ctx, eventLogName, s.logs.List())
+	lines, errorCount := s.logs.Snapshot()
+	runtime.EventsEmit(s.ctx, eventLogName, lines, errorCount)
 }
 
 // EmitLogs 主动向前端同步当前日志。

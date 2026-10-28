@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 
@@ -15,6 +16,8 @@ type CheckResult struct {
 	Proxy           *detector.ProxyConfig
 	IPInfo          *types.IPInfo
 	IsLocal         bool
+	MatchedField    string
+	MatchedKeyword  string
 	ObservationOnly string
 }
 
@@ -55,10 +58,30 @@ func (r *CheckResult) LocationTag() string {
 	if r == nil || r.IPInfo == nil {
 		return ""
 	}
-	region := strings.TrimSpace(r.IPInfo.Region)
-	city := strings.TrimSpace(r.IPInfo.City)
-	if region == "" && city == "" {
+	fields := []struct {
+		name  string
+		value string
+	}{
+		{name: "Country", value: r.IPInfo.Country},
+		{name: "Province", value: r.IPInfo.Region},
+		{name: "City", value: r.IPInfo.City},
+		{name: "ISP", value: r.IPInfo.Isp},
+	}
+	parts := make([]string, 0, len(fields))
+	for _, field := range fields {
+		value := strings.TrimSpace(field.value)
+		if value == "" {
+			value = "Unknown"
+		}
+		parts = append(parts, field.name+": "+value)
+	}
+	return strings.Join(parts, " | ")
+}
+
+// MatchTag describes the raw field and configured keyword that triggered a match.
+func (r *CheckResult) MatchTag() string {
+	if r == nil || !r.IsLocal {
 		return ""
 	}
-	return region + city
+	return fmt.Sprintf("matchedField[%s] keyword[%s]", r.MatchedField, r.MatchedKeyword)
 }

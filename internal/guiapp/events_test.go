@@ -21,6 +21,9 @@ func TestGUIErrorsWrittenToFile(t *testing.T) {
 	t.Cleanup(func() { _ = logging.CloseAll() })
 	s.writeLog("ERROR", "backend operation failed")
 	s.LogUIError("操作失败: permission denied (100%)")
+	if _, count := s.logs.Snapshot(); count != 2 {
+		t.Fatalf("backend and UI errors were not both counted: %d", count)
+	}
 	if err := logging.Sync(); err != nil {
 		t.Fatal(err)
 	}
