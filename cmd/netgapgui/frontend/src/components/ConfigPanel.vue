@@ -1,10 +1,12 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps({
   interval: { type: Number, required: true },
   keywordInput: { type: String, required: true },
-  allRegions: { type: String, required: true },
+  regions: { type: Array, required: true },
+  deletedRegion: { type: String, default: '' },
+  regionBusy: { type: Boolean, default: false },
   apiEnabled: { type: Array, required: true },
   customApiUrl: { type: String, required: true },
   translate: { type: Function, required: true },
@@ -17,6 +19,7 @@ const emit = defineEmits([
   'update:custom-api-url',
   'add-region',
   'remove-region',
+  'undo-region',
   'save-settings',
 ])
 
@@ -31,6 +34,10 @@ const apiList = [
 ]
 
 const customApiHelpOpen = ref(false)
+const selectedRegion = ref('')
+watch(() => props.regions, (regions) => {
+  if (!regions.includes(selectedRegion.value)) selectedRegion.value = ''
+})
 const customApiHelpRoot = ref(null)
 
 function onCustomApiHelpFocusOut(event) {
@@ -71,10 +78,6 @@ function onKeywordChange(event) {
 
 function onAddRegion() {
   emit('add-region', props.keywordInput)
-}
-
-function onRemoveRegion() {
-  emit('remove-region', props.keywordInput)
 }
 
 function onApiToggle(apiKey) {
@@ -121,21 +124,35 @@ function onCustomApiUrlChange(event) {
       />
       <span class="unitBox">{{ translate('secondsUnit') }}</span>
     </label>
-    <div class="formRow">
+    <div class="formRow regionInputRow">
       <span class="labelText">{{ translate('regionKeyword') }}</span>
       <input
         :value="keywordInput"
         class="textInput"
         type="text"
         @input="onKeywordChange"
+        @keydown.enter.prevent="!regionBusy && onAddRegion()"
       />
-      <button class="smallBtn" @click="onAddRegion">{{ translate('add') }}</button>
-      <button class="smallBtn dangerBtn" @click="onRemoveRegion">{{ translate('remove') }}</button>
+      <button class="smallBtn" :disabled="regionBusy" @click="onAddRegion">{{ translate('add') }}</button>
     </div>
-    <label class="textAreaBlock">
-      <span class="labelText">{{ translate('allRegions') }}</span>
-      <textarea :value="allRegions" class="regionsArea" readonly />
-    </label>
+    <div class="textAreaBlock">
+      <span id="regionsLabel" class="labelText">{{ translate('allRegions') }}</span>
+      <div>
+        <ul class="regionsArea regionList" aria-labelledby="regionsLabel">
+          <li v-for="region in regions" :key="region" class="regionRow" :class="{ selected: selectedRegion === region }">
+            <button class="regionSelect" type="button" :aria-pressed="selectedRegion === region" @click="selectedRegion = region">
+              {{ region }}
+            </button>
+            <button class="regionDelete" type="button" :disabled="regionBusy" :title="`${translate('deleteRegion')}: ${region}`" :aria-label="`${translate('deleteRegion')}: ${region}`" @click="$emit('remove-region', region)">×</button>
+          </li>
+          <li v-if="!regions.length" class="regionEmpty">{{ translate('regionsEmpty') }}</li>
+        </ul>
+        <div v-if="deletedRegion" class="regionUndo" role="status" aria-live="polite">
+          <span>{{ translate('regionDeleted') }}: {{ deletedRegion }}</span>
+          <button type="button" class="regionUndoButton" :disabled="regionBusy" @click="$emit('undo-region')">{{ translate('undo') }}</button>
+        </div>
+      </div>
+    </div>
     <div class="apiSection">
       <span class="labelText">{{ translate('apiSelection') || 'API选择' }}</span>
       <div class="apiCheckboxes">

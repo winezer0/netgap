@@ -79,7 +79,7 @@ async function saveSettings(overrides = {}) {
     language: state.language,
     interval: state.interval,
     keywordInput: state.keywordInput,
-    regions: state.regions,
+    regions: overrides.regions ?? state.regions,
     apiEnabled: state.apiEnabled,
     customApiUrl: state.customApiUrl,
     closeAction: overrides.closeAction ?? state.closeAction,

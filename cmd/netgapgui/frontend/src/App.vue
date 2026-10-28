@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import TitleBar from './components/TitleBar.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import ConfigPanel from './components/ConfigPanel.vue'
@@ -23,7 +23,53 @@ const {
   quitApp,
 } = useAppState()
 
-const regionText = computed(() => state.regions.join('\n'))
+const deletedRegion = ref(null)
+const regionBusy = ref(false)
+
+async function deleteRegion(region) {
+  if (regionBusy.value) return
+  const index = state.regions.indexOf(region)
+  if (index < 0) return
+  regionBusy.value = true
+  try {
+    await removeRegion(region)
+    deletedRegion.value = { region, index }
+  } catch (error) {
+    useNotification().addNotification(`${t('regionDeleteFailed')}: ${error}`, 'error')
+  } finally {
+    regionBusy.value = false
+  }
+}
+
+async function undoRegionDeletion() {
+  if (regionBusy.value || !deletedRegion.value) return
+  const { region, index } = deletedRegion.value
+  regionBusy.value = true
+  try {
+    const regions = [...state.regions]
+    if (!regions.includes(region)) {
+      regions.splice(Math.min(index, regions.length), 0, region)
+      await saveSettings({ regions })
+    }
+    deletedRegion.value = null
+  } catch (error) {
+    useNotification().addNotification(`${t('regionUndoFailed')}: ${error}`, 'error')
+  } finally {
+    regionBusy.value = false
+  }
+}
+
+async function addRegionEntry(region) {
+  if (regionBusy.value) return
+  regionBusy.value = true
+  try {
+    await addRegion(region)
+  } catch (error) {
+    useNotification().addNotification(`${t('regionAddFailed')}: ${error}`, 'error')
+  } finally {
+    regionBusy.value = false
+  }
+}
 const settingsVisible = ref(false)
 
 const closeWindow = async () => {
@@ -73,10 +119,13 @@ const savePreferences = async (preferences) => {
       v-model:keyword-input="state.keywordInput"
       v-model:api-enabled="state.apiEnabled"
       v-model:custom-api-url="state.customApiUrl"
-      :all-regions="regionText"
+      :regions="state.regions"
+      :deleted-region="deletedRegion?.region ?? ''"
+      :region-busy="regionBusy"
       :translate="t"
-      @add-region="addRegion"
-      @remove-region="removeRegion"
+      @add-region="addRegionEntry"
+      @remove-region="deleteRegion"
+      @undo-region="undoRegionDeletion"
       @save-settings="saveSettings"
     />
     <ActionPanel

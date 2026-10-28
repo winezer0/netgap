@@ -162,6 +162,103 @@ textarea {
   resize: none;
 }
 
+.regionInputRow {
+  grid-template-columns: 118px minmax(0, 1fr) auto;
+}
+
+.textAreaBlock > div {
+  min-width: 0;
+}
+
+.regionList {
+  margin: 0;
+  padding: 2px;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.regionRow {
+  display: flex;
+  align-items: center;
+  border-radius: 3px;
+  border-left: 3px solid transparent;
+}
+
+.regionRow:hover {
+  background: #202d3c;
+}
+
+.regionRow.selected {
+  background: #244563;
+  border-left-color: #77bfff;
+}
+
+.regionSelect,
+.regionDelete,
+.regionUndoButton {
+  --wails-draggable: no-drag;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.regionSelect {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.regionDelete {
+  flex: 0 0 26px;
+  align-self: stretch;
+  color: #f4a5ae;
+}
+
+.regionDelete:hover {
+  background: #6c2430;
+  color: white;
+}
+
+.regionSelect:focus-visible,
+.regionDelete:focus-visible,
+.regionUndoButton:focus-visible {
+  outline: 2px solid #77bfff;
+  outline-offset: -2px;
+}
+
+.regionUndo {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.regionUndo span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.regionUndoButton {
+  color: #8fcbff;
+  text-decoration: underline;
+  flex-shrink: 0;
+}
+
+.regionEmpty {
+  padding: 4px 6px;
+  color: #8fa2b7;
+}
+
+.regionDelete:disabled,
+.regionUndoButton:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
 .actionPanel {
   display: flex;
   flex-direction: column;
