@@ -35,6 +35,22 @@ func (a *App) SaveSettings(input configstore.Settings) (*guiapp.ViewState, error
 	return a.service.SaveSettings(&input)
 }
 
+func (a *App) CheckForUpdates(currentVersion string) (map[string]any, error) {
+	return a.service.CheckForUpdates(currentVersion)
+}
+
+func (a *App) DownloadUpdate() (map[string]any, error) {
+	return a.service.DownloadUpdate()
+}
+
+func (a *App) GetPendingUpdate(currentVersion string) map[string]any {
+	return a.service.GetPendingUpdate(currentVersion)
+}
+
+func (a *App) InstallUpdate() error {
+	return a.service.InstallUpdate()
+}
+
 // AddRegion 添加区域关键字。
 func (a *App) AddRegion(keyword string) (*guiapp.ViewState, error) {
 	return a.service.AddRegion(keyword)

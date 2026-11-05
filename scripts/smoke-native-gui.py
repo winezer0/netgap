@@ -54,6 +54,10 @@ def main() -> int:
             if not xvfb:
                 raise RuntimeError("xvfb-run is required for Linux GUI startup smoke")
             command = [xvfb, "-a", *command]
+            dbus = shutil.which("dbus-run-session")
+            if not dbus:
+                raise RuntimeError("dbus-run-session is required for Linux GUI startup smoke")
+            command = [dbus, "--", *command]
         env = os.environ.copy()
         if args.platform == "linux":
             env.setdefault("GDK_BACKEND", "x11")

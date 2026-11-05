@@ -10,6 +10,14 @@ export function ClearLogs() {
   return window['go']['main']['App']['ClearLogs']();
 }
 
+export function CheckForUpdates(arg1) {
+  return window['go']['main']['App']['CheckForUpdates'](arg1);
+}
+
+export function DownloadUpdate() {
+  return window['go']['main']['App']['DownloadUpdate']();
+}
+
 export function GetDefaultRouteInfo() {
   return window['go']['main']['App']['GetDefaultRouteInfo']();
 }
@@ -20,6 +28,10 @@ export function GetElevationStatus() {
 
 export function GetInitialState() {
   return window['go']['main']['App']['GetInitialState']();
+}
+
+export function GetPendingUpdate(arg1) {
+  return window['go']['main']['App']['GetPendingUpdate'](arg1);
 }
 
 export function GetProxyConfigInfo() {
@@ -40,6 +52,10 @@ export function LogUIError(arg1) {
 
 export function MinimiseWindow() {
   return window['go']['main']['App']['MinimiseWindow']();
+}
+
+export function InstallUpdate() {
+  return window['go']['main']['App']['InstallUpdate']();
 }
 
 export function QuitApp() {

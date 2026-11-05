@@ -28,6 +28,7 @@ type Settings struct {
 	CloseAction         string   `json:"closeAction" yaml:"close_action"`
 	RemoveRouteOnMatch  bool     `json:"removeRouteOnMatch" yaml:"remove_route_on_match"`
 	NotificationPopup   bool     `json:"notificationPopup" yaml:"notification_popup"`
+	AutoCheckUpdates    bool     `json:"autoCheckUpdates" yaml:"auto_check_updates"`
 }
 
 // Store 表示 GUI 配置存储对象。
@@ -124,6 +125,7 @@ func NormalizeSettings(settings *Settings) *Settings {
 		CloseAction:         normalizeCloseAction(settings.CloseAction),
 		RemoveRouteOnMatch:  settings.RemoveRouteOnMatch,
 		NotificationPopup:   settings.NotificationPopup,
+		AutoCheckUpdates:    settings.AutoCheckUpdates,
 	}
 	if len(result.Regions) == 0 {
 		result.Regions = DefaultSettings().Regions

@@ -97,7 +97,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config iproute2 libgtk-3-dev "${{ matrix.webkit_package }}" libglib2.0-bin gsettings-desktop-schemas dbus python3
+          sudo apt-get install -y build-essential pkg-config iproute2 libgtk-3-dev "${{ matrix.webkit_package }}" libglib2.0-bin gsettings-desktop-schemas dbus dbus-daemon python3 xvfb xauth
           dpkg-query -W 'libwebkit2gtk*' 'libjavascriptcoregtk*' 'gsettings-desktop-schemas' | tee build/evidence/linux-packages.txt
 
       - name: Test all Go packages with race detection
@@ -174,16 +174,14 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && runner.os == 'macOS'
         run: go test -tags acceptance -race -v ./internal/macnetwork -run TestNativeNetworkWatcherRecoversAfterInvalidation -count=1 -timeout=30s 2>&1 | tee build/evidence/macos-watcher-acceptance.txt
 
-      - name: "Install virtual display for manual Linux GUI startup"
-        if: github.event_name == 'workflow_dispatch' && runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y xvfb
-
-      - name: "Manual acceptance: extract and start packaged GUI"
-        if: github.event_name == 'workflow_dispatch' && runner.os != 'macOS'
+      - name: "Automated acceptance: extract and start packaged GUI on Linux and macOS"
+        if: runner.os == 'Linux' || runner.os == 'macOS'
         run: |
-          python=python3
-          if [[ "$RUNNER_OS" == Windows ]]; then python=python; fi
-          "$python" -B scripts/smoke-native-gui.py "build/artifacts/netgapgui-${{ matrix.id }}.${{ runner.os == 'Linux' && 'tar.gz' || 'zip' }}" "${{ runner.os == 'Windows' && 'windows' || runner.os == 'macOS' && 'macos' || 'linux' }}" 2>&1 | tee build/evidence/gui-startup-acceptance.txt
+          python3 -B scripts/smoke-native-gui.py "build/artifacts/netgapgui-${{ matrix.id }}.${{ runner.os == 'Linux' && 'tar.gz' || 'zip' }}" "${{ runner.os == 'macOS' && 'macos' || 'linux' }}" 2>&1 | tee build/evidence/gui-startup-acceptance.txt
+
+      - name: "Manual acceptance: extract and start packaged Windows GUI"
+        if: github.event_name == 'workflow_dispatch' && runner.os == 'Windows'
+        run: python -B scripts/smoke-native-gui.py "build/artifacts/netgapgui-${{ matrix.id }}.zip" windows 2>&1 | tee build/evidence/gui-startup-acceptance.txt
 
       - name: Upload native binaries
         uses: actions/upload-artifact@v7
@@ -211,13 +209,11 @@ jobs:
             echo "## Native ${{ matrix.id }}: $JOB_STATUS"
             echo "Commit: $GITHUB_SHA"
             echo "Frontend lint, interaction tests and build-gate tests are mandatory for every GUI build; output is included in gui-build.txt."
+            echo "Packaged GUI startup is automatically smoke-tested on every Linux and macOS runner architecture (Xvfb on Linux, Launch Services on macOS)."
             if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
-              echo "Manual acceptance adds native platform checks where applicable and packaged GUI startup smoke on Windows/Linux."
-              if [[ "$RUNNER_OS" == macOS ]]; then
-                echo "macOS GUI process launch is unavailable on the hosted runner; app bundle/architecture checks and native watcher tests ran."
-              fi
+              echo "Manual acceptance additionally runs platform-specific network checks and Windows GUI startup smoke."
             else
-              echo "Automatic build and automated tests. Manual desktop acceptance runs only through workflow_dispatch."
+              echo "Windows GUI startup smoke remains available through workflow_dispatch."
             fi
             echo "Artifacts: native-${{ matrix.id }} (on success), evidence-${{ matrix.id }}."
           } >> "$GITHUB_STEP_SUMMARY"

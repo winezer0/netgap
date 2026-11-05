@@ -25,6 +25,7 @@ func cloneSettings(settings *configstore.Settings) *configstore.Settings {
 		CloseAction:         settings.CloseAction,
 		RemoveRouteOnMatch:  settings.RemoveRouteOnMatch,
 		NotificationPopup:   settings.NotificationPopup,
+		AutoCheckUpdates:    settings.AutoCheckUpdates,
 	}
 }
 

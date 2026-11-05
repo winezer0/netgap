@@ -51,8 +51,19 @@ describe('SettingsDialog', () => {
         notificationPopup: false,
         autoStartMonitoring: false,
         startMinimized: false,
+        autoCheckUpdates: false,
       },
     ]])
+  })
+
+  it('saves the automatic update preference and exposes manual checking', async () => {
+    const wrapper = mount(SettingsDialog, { props: { ...baseProps, autoCheckUpdates: false } })
+    await wrapper.get('[aria-label="autoCheckUpdates"]').setValue(true)
+    await wrapper.get('.updateActions button').trigger('click')
+    expect(wrapper.emitted('check-updates')).toHaveLength(1)
+
+    await wrapper.get('.primaryBtn').trigger('click')
+    expect(wrapper.emitted('save')[0][0]).toMatchObject({ autoCheckUpdates: true })
   })
 
   it('adds and removes a startup entry immediately', async () => {

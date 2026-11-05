@@ -4,9 +4,11 @@ import {
 } from '../../wailsjs/runtime/runtime'
 import {
   AddRegion,
+  CheckForUpdates,
   ClearLogs,
   LogUIError,
   GetInitialState,
+  GetPendingUpdate,
   GetElevationStatus,
   RestartAsAdmin,
   GetStartupStatus,
@@ -14,6 +16,8 @@ import {
   GetDefaultRouteInfo,
   GetProxyConfigInfo,
   HideToTray,
+  DownloadUpdate,
+  InstallUpdate,
   QuitApp,
   RemoveDefaultRoute,
   RemoveRegion,
@@ -22,11 +26,17 @@ import {
   StartMonitoring,
   SetWindowForeground,
   StopMonitoring,
+  ShowWindow,
 } from '../../wailsjs/go/main/App'
 
 export const backend = {
   logUIError: (message) => LogUIError(message),
   getInitialState: () => GetInitialState(),
+  checkForUpdates: (version) => CheckForUpdates(version),
+  downloadUpdate: () => DownloadUpdate(),
+  getPendingUpdate: (version) => GetPendingUpdate(version),
+  installUpdate: () => InstallUpdate(),
+  showWindow: () => ShowWindow(),
   getElevationStatus: () => GetElevationStatus(),
   restartAsAdmin: () => RestartAsAdmin(),
   getStartupStatus: () => GetStartupStatus(),

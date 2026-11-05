@@ -1,4 +1,4 @@
-import { onMounted, onUnmounted, reactive } from 'vue'
+import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import { backend } from '../services/backend'
 import { translations } from '../services/translations'
 import { useNotification } from './useNotification'
@@ -15,6 +15,7 @@ const state = reactive({
   closeAction: 'tray',
   removeRouteOnMatch: true,
   notificationPopup: true,
+  autoCheckUpdates: false,
   autoStartMonitoring: false,
   startMinimized: false,
   logs: [],
@@ -26,6 +27,7 @@ const state = reactive({
   alertRevision: 0,
   health: { runId: 0, revision: 0, running: false, phase: 'stopped', disconnectState: 'idle' },
 })
+const ready = ref(false)
 
 function mergeHealth(payload) {
   if (!payload) return
@@ -59,6 +61,7 @@ function mergeState(payload) {
   state.closeAction = payload.closeAction ?? state.closeAction
   state.removeRouteOnMatch = payload.removeRouteOnMatch ?? state.removeRouteOnMatch
   state.notificationPopup = payload.notificationPopup ?? state.notificationPopup
+  state.autoCheckUpdates = payload.autoCheckUpdates ?? state.autoCheckUpdates
   state.autoStartMonitoring = payload.autoStartMonitoring ?? state.autoStartMonitoring
   state.startMinimized = payload.startMinimized ?? state.startMinimized
   state.logs = payload.logs ?? state.logs
@@ -85,6 +88,7 @@ async function saveSettings(overrides = {}) {
     closeAction: overrides.closeAction ?? state.closeAction,
     removeRouteOnMatch: overrides.removeRouteOnMatch ?? state.removeRouteOnMatch,
     notificationPopup: overrides.notificationPopup ?? state.notificationPopup,
+    autoCheckUpdates: overrides.autoCheckUpdates ?? state.autoCheckUpdates,
     autoStartMonitoring: overrides.autoStartMonitoring ?? state.autoStartMonitoring,
     startMinimized: overrides.startMinimized ?? state.startMinimized,
   }))
@@ -155,6 +159,7 @@ export function useAppState() {
       backend.setWindowForeground?.(false, ++windowReportRevision)?.catch(() => {})
     })
     mergeState(await backend.getInitialState())
+    ready.value = true
     reportForeground()
   })
   onUnmounted(() => {
@@ -165,6 +170,7 @@ export function useAppState() {
 
   return {
     state,
+    ready,
     t,
     addRegion,
     removeRegion,

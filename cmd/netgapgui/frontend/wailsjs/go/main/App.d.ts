@@ -10,11 +10,17 @@ export function AddRegion(arg1:string):Promise<guiapp.ViewState>;
 
 export function ClearLogs():Promise<void>;
 
+export function CheckForUpdates(arg1:string):Promise<Record<string, any>>;
+
+export function DownloadUpdate():Promise<Record<string, any>>;
+
 export function GetDefaultRouteInfo():Promise<iproute.RouteInfo>;
 
 export function GetElevationStatus():Promise<elevation.Status>;
 
 export function GetInitialState():Promise<guiapp.ViewState>;
+
+export function GetPendingUpdate(arg1:string):Promise<Record<string, any>>;
 
 export function GetProxyConfigInfo():Promise<guiapp.ProxyConfigInfo>;
 
@@ -25,6 +31,8 @@ export function HideToTray():Promise<void>;
 export function LogUIError(arg1:string):Promise<void>;
 
 export function MinimiseWindow():Promise<void>;
+
+export function InstallUpdate():Promise<void>;
 
 export function QuitApp():Promise<void>;
 

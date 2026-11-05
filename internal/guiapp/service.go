@@ -13,6 +13,7 @@ import (
 	"netgap/internal/guiapp/configstore"
 	"netgap/internal/guiapp/logbuffer"
 	"netgap/internal/guiapp/monitoring"
+	"netgap/internal/guiapp/updater"
 	"netgap/internal/ipchecker/localdb"
 	"netgap/internal/iproute"
 	monitorcore "netgap/internal/monitor"
@@ -34,6 +35,8 @@ type Service struct {
 	logs              *logbuffer.Buffer
 	monitor           *monitoring.Manager
 	settings          *configstore.Settings
+	updateManager     *updater.Manager
+	updateManagerErr  error
 	resolver          *localdb.Resolver
 	tray              *TrayController
 	mu                sync.RWMutex
@@ -80,10 +83,13 @@ func NewService() (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	updateManager, updateManagerErr := updater.NewManager()
 	service := &Service{
-		store:    store,
-		logs:     logbuffer.New(500),
-		settings: settings,
+		store:            store,
+		logs:             logbuffer.New(500),
+		settings:         settings,
+		updateManager:    updateManager,
+		updateManagerErr: updateManagerErr,
 	}
 	// Initialize file logging before the resolver emits startup messages.
 	service.initLogger()
@@ -153,6 +159,7 @@ func (s *Service) State() *ViewState {
 		CloseAction:         settings.CloseAction,
 		RemoveRouteOnMatch:  settings.RemoveRouteOnMatch,
 		NotificationPopup:   settings.NotificationPopup,
+		AutoCheckUpdates:    settings.AutoCheckUpdates,
 		Logs:                lines,
 		ErrorCount:          errorCount,
 		ConfigPath:          s.store.Path(),

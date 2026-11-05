@@ -10,16 +10,21 @@ const props = defineProps({
   notificationPopup: { type: Boolean, required: true },
   autoStartMonitoring: { type: Boolean, default: false },
   startMinimized: { type: Boolean, default: false },
+  autoCheckUpdates: { type: Boolean, default: false },
+  updatePhase: { type: String, default: 'idle' },
+  updateVersion: { type: String, default: '' },
+  updateError: { type: String, default: '' },
   translate: { type: Function, required: true },
 })
 
-const emit = defineEmits(['cancel', 'save'])
+const emit = defineEmits(['cancel', 'save', 'check-updates', 'download-update', 'restart-update'])
 const draft = reactive({
   closeAction: 'tray',
   removeRouteOnMatch: true,
   notificationPopup: true,
   autoStartMonitoring: false,
   startMinimized: false,
+  autoCheckUpdates: false,
 })
 
 const startup = ref(null)
@@ -65,6 +70,7 @@ watch(() => props.visible, (visible) => {
   draft.notificationPopup = props.notificationPopup
   draft.autoStartMonitoring = props.autoStartMonitoring
   draft.startMinimized = props.startMinimized
+  draft.autoCheckUpdates = props.autoCheckUpdates
   loadStartup()
 }, { immediate: true })
 
@@ -93,6 +99,45 @@ const save = () => emit('save', { ...draft })
         </p>
         <p v-if="startupError" role="alert" class="startupError">{{ translate('startupFailed') }}: {{ startupError }}</p>
         <button v-if="startupError" type="button" :disabled="startupBusy" @click="loadStartup">{{ translate('retry') }}</button>
+      </div>
+
+      <div class="updateSection">
+        <label class="settingRow checkboxRow">
+          <span>{{ translate('autoCheckUpdates') }}</span>
+          <input v-model="draft.autoCheckUpdates" type="checkbox" :aria-label="translate('autoCheckUpdates')" />
+        </label>
+        <div class="updateActions">
+          <button
+            class="startupBtn"
+            type="button"
+            :disabled="['checking', 'downloading', 'restarting'].includes(updatePhase)"
+            @click="emit('check-updates')"
+          >
+            {{ translate(updatePhase === 'checking' ? 'checkingUpdates' : 'checkForUpdates') }}
+          </button>
+          <button
+            v-if="updatePhase === 'available' && !autoCheckUpdates"
+            class="startupBtn"
+            type="button"
+            @click="emit('download-update')"
+          >
+            {{ translate('downloadUpdate') }}
+          </button>
+          <button
+            v-if="updatePhase === 'downloaded'"
+            class="startupBtn"
+            type="button"
+            @click="emit('restart-update')"
+          >
+            {{ translate('restartToUpdate') }}
+          </button>
+        </div>
+        <p v-if="updatePhase === 'checking'" class="startupHint">{{ translate('checkingUpdates') }}</p>
+        <p v-else-if="updatePhase === 'downloading'" class="startupHint">{{ translate('downloadingUpdate') }}</p>
+        <p v-else-if="updatePhase === 'current'" class="startupHint">{{ translate('upToDate') }}</p>
+        <p v-else-if="updatePhase === 'available'" class="startupHint">{{ translate('updateAvailable') }} {{ updateVersion }}</p>
+        <p v-else-if="updatePhase === 'downloaded'" class="startupHint">{{ translate('updateDownloaded') }} {{ updateVersion }}</p>
+        <p v-else-if="updatePhase === 'error'" role="alert" class="startupError">{{ translate('updateFailed') }}: {{ updateError }}</p>
       </div>
 
       <label class="settingRow">
@@ -167,6 +212,8 @@ h2 {
 }
 
 .startupSection { margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #344251; }
+.updateSection { margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #344251; }
+.updateActions { display: flex; justify-content: flex-end; gap: 8px; margin: 4px 0 10px; }
 .startupHint { font-size: 12px; color: #a9bad0; line-height: 1.5; }
 .startupError { font-size: 12px; color: #ff9c9c; overflow-wrap: anywhere; }
 .startupBtn { padding: 7px; border: 1px solid #405268; border-radius: 6px; background: #263549; color: #eff4fb; cursor: pointer; }
