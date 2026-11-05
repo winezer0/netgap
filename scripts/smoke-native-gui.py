@@ -47,8 +47,19 @@ def main() -> int:
             executable.chmod(executable.stat().st_mode | 0o111)
 
         command = [str(executable)]
+        macos_logs = None
         if args.platform == "macos":
-            command = ["open", "-n", "-a", str(executable.parent.parent.parent)]
+            macos_logs = (root / "gui-stdout.log", root / "gui-stderr.log")
+            command = [
+                "open",
+                "-n",
+                "-a",
+                str(executable.parent.parent.parent),
+                "--stdout",
+                str(macos_logs[0]),
+                "--stderr",
+                str(macos_logs[1]),
+            ]
         if args.platform == "linux":
             xvfb = shutil.which("xvfb-run")
             if not xvfb:
@@ -72,20 +83,68 @@ def main() -> int:
                 start_new_session=(args.platform != "windows"),
             )
             try:
-                time.sleep(5)
                 if args.platform == "macos":
-                    listing = subprocess.run(["ps", "-axo", "pid=,comm=,args="], capture_output=True, text=True)
+                    expected_executable = str(executable.resolve())
+                    deadline = time.monotonic() + 30
                     running = []
-                    for line in listing.stdout.splitlines():
-                        fields = line.split(None, 2)
-                        if len(fields) >= 2 and Path(fields[1]).name == "netgapgui":
-                            running.append(line.strip())
+                    candidates = []
+                    while time.monotonic() < deadline:
+                        listing = subprocess.run(
+                            ["ps", "-axo", "pid=,comm=,args="], capture_output=True, text=True
+                        )
+                        candidates = [
+                            line.strip()
+                            for line in listing.stdout.splitlines()
+                            if "netgapgui" in line or str(root) in line
+                        ]
+                        for line in listing.stdout.splitlines():
+                            fields = line.split(None, 2)
+                            if len(fields) < 2:
+                                continue
+                            command_line = fields[2] if len(fields) > 2 else ""
+                            if (
+                                expected_executable in command_line
+                                or Path(fields[1]).name == executable.name
+                            ):
+                                running.append(line.strip())
+                        if running:
+                            break
+                        time.sleep(1)
                     if not running:
                         output.seek(0)
-                        detail = output.read().decode("utf-8", errors="replace")
+                        details = [output.read().decode("utf-8", errors="replace")]
+                        details.append(f"candidate processes={candidates}")
+                        for log_path in macos_logs:
+                            if log_path.is_file():
+                                details.append(
+                                    f"{log_path.name}:\n{log_path.read_text(encoding='utf-8', errors='replace')}"
+                                )
                         raise RuntimeError(
                             f"Launch Services did not keep the GUI running "
-                            f"(open exit={process.poll()}, matching processes={running}):\n{detail}"
+                            f"(open exit={process.poll()}, matching processes={running}):\n"
+                            + "\n".join(details)
+                        )
+                    time.sleep(2)
+                    listing = subprocess.run(["ps", "-axo", "pid=,comm=,args="], capture_output=True, text=True)
+                    still_running = []
+                    for line in listing.stdout.splitlines():
+                        fields = line.split(None, 2)
+                        if len(fields) < 2:
+                            continue
+                        command_line = fields[2] if len(fields) > 2 else ""
+                        if expected_executable in command_line or Path(fields[1]).name == executable.name:
+                            still_running.append(line.strip())
+                    if not still_running:
+                        output.seek(0)
+                        details = [output.read().decode("utf-8", errors="replace")]
+                        for log_path in macos_logs:
+                            if log_path.is_file():
+                                details.append(
+                                    f"{log_path.name}:\n{log_path.read_text(encoding='utf-8', errors='replace')}"
+                                )
+                        raise RuntimeError(
+                            f"GUI process exited shortly after launch "
+                            f"(open exit={process.poll()}):\n" + "\n".join(details)
                         )
                 elif process.poll() is not None:
                     output.seek(0)
