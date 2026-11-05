@@ -34,6 +34,11 @@ func main() {
 		service.ConfigureElevatedRestart(intent.ResumeMonitoring)
 	}
 	app := NewApp(service, trayIcon)
+	if runtime.GOOS == "darwin" {
+		// go-systray's nativeStart creates AppKit windows and must run on the
+		// locked main OS thread, not from Wails' DomReady callback goroutine.
+		app.tray.Start()
+	}
 	var instanceLock *options.SingleInstanceLock
 	if runtime.GOOS == "windows" {
 		instanceLock = &options.SingleInstanceLock{

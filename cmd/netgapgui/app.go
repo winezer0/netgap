@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"runtime"
 
 	"netgap/internal/guiapp"
 )
@@ -29,7 +30,9 @@ func (a *App) Startup(ctx context.Context) {
 func (a *App) DomReady(ctx context.Context) {
 	a.service.EmitState()
 	a.service.EmitLogs()
-	a.tray.Start()
+	if runtime.GOOS != "darwin" {
+		a.tray.Start()
+	}
 	a.service.MarkFrontendReady()
 }
 
