@@ -2,8 +2,6 @@ package updater
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/winezer0/downutils"
 )
 
 const (
@@ -186,6 +186,12 @@ func (m *Manager) Download(ctx context.Context) (*PendingUpdate, error) {
 	if m.asset.Size < 0 || m.asset.Size > maxAssetSize {
 		return nil, fmt.Errorf("update package size is invalid: %d", m.asset.Size)
 	}
+	if err := validateGitHubDownloadURL(m.checksum.BrowserDownloadURL); err != nil {
+		return nil, fmt.Errorf("invalid update checksum URL: %w", err)
+	}
+	if err := validateGitHubDownloadURL(m.asset.BrowserDownloadURL); err != nil {
+		return nil, fmt.Errorf("invalid update package URL: %w", err)
+	}
 
 	stageDir, err := os.MkdirTemp(m.root, "stage-")
 	if err != nil {
@@ -198,23 +204,39 @@ func (m *Manager) Download(ctx context.Context) (*PendingUpdate, error) {
 		}
 	}()
 
-	manifest, err := m.downloadBytes(ctx, m.checksum.BrowserDownloadURL, 1<<20)
-	if err != nil {
-		return nil, fmt.Errorf("download update checksum: %w", err)
+	checkSize := ""
+	if m.asset.Size > 0 {
+		checkSize = fmt.Sprintf("%dB", m.asset.Size)
 	}
-	expectedHash, err := checksumForAsset(manifest, m.asset.Name)
-	if err != nil {
-		return nil, err
+	item := downutils.DownItem{
+		Module:       "update",
+		FileName:     m.asset.Name,
+		DownloadURLs: []string{m.asset.BrowserDownloadURL},
+		KeepUpdated:  "enable",
+		StorageDir:   stageDir,
+		Enable:       true,
+		Checksum:     "sha256:" + m.checksum.BrowserDownloadURL,
+		CheckSize:    checkSize,
+		MaxSize:      maxAssetSize,
 	}
-	archivePath := filepath.Join(stageDir, m.asset.Name)
-	if err := m.downloadFile(ctx, m.asset.BrowserDownloadURL, archivePath, m.asset.Size, expectedHash); err != nil {
+	options := downutils.NewDefaultDownOptions()
+	options.ShowProgress = false
+	options.MaxRetries = 1
+	result, err := downutils.ExecuteDownloadsWithClientContext(ctx, options, downutils.DownConfig{
+		"update": {item},
+	}, m.dlClient)
+	if err != nil {
 		return nil, fmt.Errorf("download update package: %w", err)
 	}
-	extractDir := filepath.Join(stageDir, "unpacked")
-	if err := os.Mkdir(extractDir, 0o755); err != nil {
-		return nil, err
+	if result == nil || result.SuccessItems != 1 || len(result.TaskInfos) != 1 || result.TaskInfos[0].Status != downutils.TaskStatusSuccess {
+		if result != nil && len(result.TaskInfos) == 1 && result.TaskInfos[0].ErrorMsg != "" {
+			return nil, fmt.Errorf("download update package: %s", result.TaskInfos[0].ErrorMsg)
+		}
+		return nil, errors.New("download update package: downloader did not report one successful task")
 	}
-	sourcePath, err := extractPayload(archivePath, extractDir)
+	archivePath := filepath.Join(stageDir, m.asset.Name)
+	extractDir := filepath.Join(stageDir, "unpacked")
+	sourcePath, err := extractPayload(ctx, archivePath, extractDir)
 	if err != nil {
 		return nil, err
 	}
@@ -361,108 +383,15 @@ func (m *Manager) persistPending(staged *stagedUpdate) error {
 	return nil
 }
 
-func (m *Manager) downloadBytes(ctx context.Context, downloadURL string, limit int64) ([]byte, error) {
-	request, err := downloadRequest(ctx, downloadURL)
-	if err != nil {
-		return nil, err
-	}
-	response, err := m.dlClient.Do(request)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("download returned %s", response.Status)
-	}
-	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(data)) > limit {
-		return nil, errors.New("download exceeds size limit")
-	}
-	return data, nil
-}
-
-func (m *Manager) downloadFile(ctx context.Context, downloadURL, destination string, expectedSize int64, expectedHash string) error {
-	request, err := downloadRequest(ctx, downloadURL)
-	if err != nil {
-		return err
-	}
-	response, err := m.dlClient.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("download returned %s", response.Status)
-	}
-	file, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	hash := sha256.New()
-	limited := &io.LimitedReader{R: response.Body, N: maxAssetSize + 1}
-	written, copyErr := io.Copy(io.MultiWriter(file, hash), limited)
-	closeErr := file.Close()
-	if copyErr != nil {
-		_ = os.Remove(destination)
-		return copyErr
-	}
-	if closeErr != nil {
-		_ = os.Remove(destination)
-		return closeErr
-	}
-	if written > maxAssetSize {
-		_ = os.Remove(destination)
-		return errors.New("update package exceeds size limit")
-	}
-	if expectedSize > 0 && written != expectedSize {
-		_ = os.Remove(destination)
-		return fmt.Errorf("update package size mismatch: expected %d bytes, received %d", expectedSize, written)
-	}
-	if !strings.EqualFold(hex.EncodeToString(hash.Sum(nil)), expectedHash) {
-		_ = os.Remove(destination)
-		return errors.New("update package checksum does not match SHA256SUMS")
-	}
-	return nil
-}
-
-func downloadRequest(ctx context.Context, rawURL string) (*http.Request, error) {
+func validateGitHubDownloadURL(rawURL string) error {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if parsed.Scheme != "https" || parsed.Host != "github.com" {
-		return nil, fmt.Errorf("unexpected GitHub release asset URL: %s", rawURL)
+		return fmt.Errorf("unexpected GitHub release asset URL: %s", rawURL)
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	request.Header.Set("User-Agent", "netgapgui-update-checker")
-	request.Header.Set("Accept", "application/octet-stream")
-	return request, nil
-}
-
-func checksumForAsset(manifest []byte, name string) (string, error) {
-	for _, line := range strings.Split(string(manifest), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			continue
-		}
-		fileName := strings.TrimPrefix(fields[1], "*")
-		if filepath.Base(fileName) == name {
-			if len(fields[0]) != sha256.Size*2 {
-				return "", errors.New("invalid SHA256SUMS entry")
-			}
-			if _, err := hex.DecodeString(fields[0]); err != nil {
-				return "", errors.New("invalid SHA256SUMS hash")
-			}
-			return strings.ToLower(fields[0]), nil
-		}
-	}
-	return "", fmt.Errorf("SHA256SUMS has no entry for %s", name)
+	return nil
 }
 
 func assetNameForPlatform() (string, error) {

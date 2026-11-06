@@ -55,7 +55,7 @@ func TestCompareVersions(t *testing.T) {
 }
 
 func TestCheckAndDownloadVerifiesAndPersistsUpdate(t *testing.T) {
-	manager, assetName := newTestManager(t, "")
+	manager, assetName, requests := newTestManager(t, "")
 	check, err := manager.Check(context.Background(), "v1.0.0")
 	if err != nil {
 		t.Fatal(err)
@@ -86,10 +86,11 @@ func TestCheckAndDownloadVerifiesAndPersistsUpdate(t *testing.T) {
 	if pending := manager.Pending("v1.0.0"); pending == nil || !pending.Downloaded {
 		t.Fatalf("downloaded update is not reported as pending: %+v", pending)
 	}
+	assertUpdateDownloadRequests(t, requests, assetName)
 }
 
 func TestDownloadRejectsChecksumMismatch(t *testing.T) {
-	manager, _ := newTestManager(t, strings.Repeat("0", 64))
+	manager, assetName, requests := newTestManager(t, strings.Repeat("0", 64))
 	if _, err := manager.Check(context.Background(), "v1.0.0"); err != nil {
 		t.Fatal(err)
 	}
@@ -101,6 +102,67 @@ func TestDownloadRejectsChecksumMismatch(t *testing.T) {
 	}
 	if _, err := os.Stat(manager.pendingPath); !os.IsNotExist(err) {
 		t.Fatalf("checksum mismatch unexpectedly persisted metadata: %v", err)
+	}
+	entries, err := os.ReadDir(manager.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("checksum mismatch left staged files behind: %v", entries)
+	}
+	assertUpdateDownloadRequests(t, requests, assetName)
+}
+
+func TestDownloadRejectsNonGitHubURLsBeforeStaging(t *testing.T) {
+	tests := []struct {
+		name string
+		edit func(*Manager)
+	}{
+		{
+			name: "package URL",
+			edit: func(manager *Manager) { manager.asset.BrowserDownloadURL = "https://github.example.com/package.zip" },
+		},
+		{
+			name: "checksum URL",
+			edit: func(manager *Manager) { manager.checksum.BrowserDownloadURL = "https://example.com/SHA256SUMS" },
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			manager, _, _ := newTestManager(t, "")
+			if _, err := manager.Check(context.Background(), "v1.0.0"); err != nil {
+				t.Fatal(err)
+			}
+			test.edit(manager)
+			if _, err := manager.Download(context.Background()); err == nil {
+				t.Fatal("expected an untrusted asset URL to be rejected")
+			}
+			entries, err := os.ReadDir(manager.root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 0 {
+				t.Fatalf("rejected URL created staged files: %v", entries)
+			}
+		})
+	}
+}
+
+func TestDownloadRejectsOversizedAssetBeforeStaging(t *testing.T) {
+	manager, _, _ := newTestManager(t, "")
+	if _, err := manager.Check(context.Background(), "v1.0.0"); err != nil {
+		t.Fatal(err)
+	}
+	manager.asset.Size = maxAssetSize + 1
+	if _, err := manager.Download(context.Background()); err == nil {
+		t.Fatal("expected an oversized update asset to be rejected")
+	}
+	entries, err := os.ReadDir(manager.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("oversized asset created staged files: %v", entries)
 	}
 }
 
@@ -126,7 +188,7 @@ func TestCheckSkipsDevelopmentBuildWithoutNetwork(t *testing.T) {
 	}
 }
 
-func newTestManager(t *testing.T, checksumOverride string) (*Manager, string) {
+func newTestManager(t *testing.T, checksumOverride string) (*Manager, string, map[string]int) {
 	t.Helper()
 	assetName, err := assetNameForPlatform()
 	if err != nil {
@@ -152,11 +214,23 @@ func newTestManager(t *testing.T, checksumOverride string) (*Manager, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	transport := updaterRoundTripper(func(request *http.Request) (*http.Response, error) {
+	requests := make(map[string]int)
+	apiTransport := updaterRoundTripper(func(request *http.Request) (*http.Response, error) {
+		if request.URL.String() != latestReleaseURL {
+			return nil, fmt.Errorf("unexpected GitHub API request URL %q", request.URL.String())
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Header:     make(http.Header),
+			Body:       io.NopCloser(bytes.NewReader(releaseJSON)),
+			Request:    request,
+		}, nil
+	})
+	downloadTransport := updaterRoundTripper(func(request *http.Request) (*http.Response, error) {
+		requests[request.URL.String()]++
 		var body []byte
 		switch request.URL.String() {
-		case latestReleaseURL:
-			body = releaseJSON
 		case checksumURL:
 			body = manifest
 		case assetURL:
@@ -173,13 +247,23 @@ func newTestManager(t *testing.T, checksumOverride string) (*Manager, string) {
 		}, nil
 	})
 	root := t.TempDir()
-	client := &http.Client{Transport: transport}
+	apiClient := &http.Client{Transport: apiTransport}
+	downloadClient := &http.Client{Transport: downloadTransport}
 	return &Manager{
 		root:        root,
 		pendingPath: filepath.Join(root, "pending.json"),
-		apiClient:   client,
-		dlClient:    client,
-	}, assetName
+		apiClient:   apiClient,
+		dlClient:    downloadClient,
+	}, assetName, requests
+}
+
+func assertUpdateDownloadRequests(t *testing.T, requests map[string]int, assetName string) {
+	t.Helper()
+	checksumURL := "https://github.com/" + repository + "/releases/download/v1.1.0/SHA256SUMS"
+	assetURL := "https://github.com/" + repository + "/releases/download/v1.1.0/" + assetName
+	if requests[checksumURL] != 1 || requests[assetURL] != 1 || len(requests) != 2 {
+		t.Fatalf("updater download client requests = %#v, want one checksum and one package request", requests)
+	}
 }
 
 func makeTestArchive(t *testing.T) []byte {
