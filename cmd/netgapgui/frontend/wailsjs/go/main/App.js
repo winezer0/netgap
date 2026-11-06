@@ -6,12 +6,12 @@ export function AddRegion(arg1) {
   return window['go']['main']['App']['AddRegion'](arg1);
 }
 
-export function ClearLogs() {
-  return window['go']['main']['App']['ClearLogs']();
-}
-
 export function CheckForUpdates(arg1) {
   return window['go']['main']['App']['CheckForUpdates'](arg1);
+}
+
+export function ClearLogs() {
+  return window['go']['main']['App']['ClearLogs']();
 }
 
 export function DownloadUpdate() {
@@ -46,16 +46,16 @@ export function HideToTray() {
   return window['go']['main']['App']['HideToTray']();
 }
 
+export function InstallUpdate() {
+  return window['go']['main']['App']['InstallUpdate']();
+}
+
 export function LogUIError(arg1) {
   return window['go']['main']['App']['LogUIError'](arg1);
 }
 
 export function MinimiseWindow() {
   return window['go']['main']['App']['MinimiseWindow']();
-}
-
-export function InstallUpdate() {
-  return window['go']['main']['App']['InstallUpdate']();
 }
 
 export function QuitApp() {

@@ -102,11 +102,12 @@ const save = () => emit('save', { ...draft })
       </div>
 
       <div class="updateSection">
-        <label class="settingRow checkboxRow">
+        <div class="updateControls">
+          <label class="checkboxRow updateCheckbox">
           <span>{{ translate('autoCheckUpdates') }}</span>
           <input v-model="draft.autoCheckUpdates" type="checkbox" :aria-label="translate('autoCheckUpdates')" />
-        </label>
-        <div class="updateActions">
+          </label>
+          <div class="updateActions">
           <button
             class="startupBtn"
             type="button"
@@ -131,6 +132,7 @@ const save = () => emit('save', { ...draft })
           >
             {{ translate('restartToUpdate') }}
           </button>
+          </div>
         </div>
         <p v-if="updatePhase === 'checking'" class="startupHint">{{ translate('checkingUpdates') }}</p>
         <p v-else-if="updatePhase === 'downloading'" class="startupHint">{{ translate('downloadingUpdate') }}</p>
@@ -213,7 +215,9 @@ h2 {
 
 .startupSection { margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #344251; }
 .updateSection { margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #344251; }
-.updateActions { display: flex; justify-content: flex-end; gap: 8px; margin: 4px 0 10px; }
+.updateControls { display: flex; align-items: center; gap: 12px; }
+.updateCheckbox { display: flex; align-items: center; gap: 8px; margin: 0; white-space: nowrap; }
+.updateActions { display: flex; justify-content: flex-end; gap: 8px; margin-left: auto; }
 .startupHint { font-size: 12px; color: #a9bad0; line-height: 1.5; }
 .startupError { font-size: 12px; color: #ff9c9c; overflow-wrap: anywhere; }
 .startupBtn { padding: 7px; border: 1px solid #405268; border-radius: 6px; background: #263549; color: #eff4fb; cursor: pointer; }
@@ -264,6 +268,8 @@ select {
 }
 
 @media (max-width: 420px) {
+  .updateControls { flex-wrap: wrap; }
+  .updateCheckbox { width: auto; }
   .settingRow {
     grid-template-columns: 1fr;
     gap: 6px;

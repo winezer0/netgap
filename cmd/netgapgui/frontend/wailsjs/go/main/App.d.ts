@@ -8,9 +8,9 @@ import {configstore} from '../models';
 
 export function AddRegion(arg1:string):Promise<guiapp.ViewState>;
 
-export function ClearLogs():Promise<void>;
-
 export function CheckForUpdates(arg1:string):Promise<Record<string, any>>;
+
+export function ClearLogs():Promise<void>;
 
 export function DownloadUpdate():Promise<Record<string, any>>;
 
@@ -28,11 +28,11 @@ export function GetStartupStatus():Promise<autostart.Status>;
 
 export function HideToTray():Promise<void>;
 
+export function InstallUpdate():Promise<void>;
+
 export function LogUIError(arg1:string):Promise<void>;
 
 export function MinimiseWindow():Promise<void>;
-
-export function InstallUpdate():Promise<void>;
 
 export function QuitApp():Promise<void>;
 
