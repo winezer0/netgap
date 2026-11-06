@@ -224,13 +224,9 @@ func TestRunDownloadsAndUnpacksArchive(t *testing.T) {
 	if result.Download.Status != downutils.TaskStatusSuccess || !result.Extracted || result.Skipped {
 		t.Fatalf("Run() result = %+v, want downloaded and extracted", result)
 	}
-	if result.OutputPath != destination {
-		t.Fatalf("OutputPath = %q, want %q", result.OutputPath, destination)
-	}
+	assertSameFile(t, result.OutputPath, destination)
 	wantMainFile := filepath.Join(destination, "bin", "plugin.exe")
-	if result.MainFile != wantMainFile {
-		t.Fatalf("MainFile = %q, want %q", result.MainFile, wantMainFile)
-	}
+	assertSameFile(t, result.MainFile, wantMainFile)
 	assertContent(t, wantMainFile, "binary")
 	assertContent(t, filepath.Join(destination, "data", "config.json"), "{}")
 	if _, err := os.Stat(result.ArchivePath); err != nil {
@@ -270,9 +266,10 @@ func TestRunUnpacksGzipStreamAndReportsMainFile(t *testing.T) {
 		t.Fatalf("Run(): %v", err)
 	}
 	wantMainFile := filepath.Join(destination, "plugin.bin")
-	if !result.Extracted || result.MainFile != wantMainFile {
+	if !result.Extracted {
 		t.Fatalf("Run() result = %+v, want gzip output %q", result, wantMainFile)
 	}
+	assertSameFile(t, result.MainFile, wantMainFile)
 	assertContent(t, wantMainFile, "binary")
 }
 
@@ -563,5 +560,20 @@ func assertContent(t *testing.T, path, want string) {
 	}
 	if string(content) != want {
 		t.Fatalf("content of %s = %q, want %q", path, content, want)
+	}
+}
+
+func assertSameFile(t *testing.T, got, want string) {
+	t.Helper()
+	gotInfo, err := os.Stat(got)
+	if err != nil {
+		t.Fatalf("stat actual path %q: %v", got, err)
+	}
+	wantInfo, err := os.Stat(want)
+	if err != nil {
+		t.Fatalf("stat expected path %q: %v", want, err)
+	}
+	if !os.SameFile(gotInfo, wantInfo) {
+		t.Fatalf("path %q does not refer to the same filesystem object as %q", got, want)
 	}
 }
