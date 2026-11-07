@@ -16,7 +16,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/winezer0/dezip"
 	"github.com/winezer0/downutils"
+
+	"netgap/internal/downloadunpack"
 )
 
 const (
@@ -65,15 +68,16 @@ type stagedUpdate struct {
 }
 
 type Manager struct {
-	root        string
-	pendingPath string
-	apiClient   *http.Client
-	dlClient    *http.Client
-	mu          sync.Mutex
-	available   *release
-	asset       *releaseAsset
-	checksum    *releaseAsset
-	staged      *stagedUpdate
+	root         string
+	pendingPath  string
+	apiClient    *http.Client
+	dlClient     *http.Client
+	mu           sync.Mutex
+	available    *release
+	asset        *releaseAsset
+	checksum     *releaseAsset
+	assetPattern string
+	staged       *stagedUpdate
 }
 
 func NewManager() (*Manager, error) {
@@ -138,22 +142,36 @@ func (m *Manager) Check(ctx context.Context, currentVersion string) (*CheckResul
 		return result, nil
 	}
 
-	assetName, err := assetNameForPlatform()
+	assetPattern, err := assetPatternForPlatform()
 	if err != nil {
 		return nil, err
 	}
 	var packageAsset, checksumAsset *releaseAsset
+	sources := make([]downloadunpack.Source, 0, len(latest.Assets))
 	for i := range latest.Assets {
 		asset := &latest.Assets[i]
-		switch asset.Name {
-		case assetName:
-			packageAsset = asset
-		case "SHA256SUMS":
+		if asset.Name == "SHA256SUMS" {
+			if checksumAsset != nil {
+				return nil, fmt.Errorf("release %s contains multiple SHA256SUMS assets", latest.TagName)
+			}
 			checksumAsset = asset
+			continue
 		}
+		sources = append(sources, downloadunpack.Source{Name: asset.Name, URL: asset.BrowserDownloadURL, Size: asset.Size})
 	}
-	if packageAsset == nil {
-		return nil, fmt.Errorf("release %s has no update package for %s/%s", latest.TagName, runtime.GOOS, runtime.GOARCH)
+	selected, err := downloadunpack.SelectSource(sources, assetPattern)
+	if err != nil {
+		if errors.Is(err, downloadunpack.ErrSourceNotFound) {
+			return nil, fmt.Errorf("release %s has no update package for %s/%s", latest.TagName, runtime.GOOS, runtime.GOARCH)
+		}
+		return nil, fmt.Errorf("select update package from release %s: %w", latest.TagName, err)
+	}
+	for i := range latest.Assets {
+		asset := &latest.Assets[i]
+		if asset.Name == selected.Name && asset.BrowserDownloadURL == selected.URL {
+			packageAsset = asset
+			break
+		}
 	}
 	if checksumAsset == nil {
 		return nil, fmt.Errorf("release %s does not contain SHA256SUMS", latest.TagName)
@@ -163,6 +181,7 @@ func (m *Manager) Check(ctx context.Context, currentVersion string) (*CheckResul
 	m.available = &latest
 	m.asset = packageAsset
 	m.checksum = checksumAsset
+	m.assetPattern = assetPattern
 	m.mu.Unlock()
 	result.Available = true
 	return result, nil
@@ -192,64 +211,78 @@ func (m *Manager) Download(ctx context.Context) (*PendingUpdate, error) {
 	if err := validateGitHubDownloadURL(m.asset.BrowserDownloadURL); err != nil {
 		return nil, fmt.Errorf("invalid update package URL: %w", err)
 	}
-
-	stageDir, err := os.MkdirTemp(m.root, "stage-")
+	assetPattern := m.assetPattern
+	if assetPattern == "" {
+		return nil, errors.New("update package selection is unavailable; check for updates again")
+	}
+	payloadPattern, err := payloadPatternForPlatform()
 	if err != nil {
 		return nil, err
 	}
-	keepStage := false
-	defer func() {
-		if !keepStage {
-			_ = os.RemoveAll(stageDir)
-		}
-	}()
-
-	checkSize := ""
-	if m.asset.Size > 0 {
-		checkSize = fmt.Sprintf("%dB", m.asset.Size)
+	sources := make([]downloadunpack.Source, 0, len(m.available.Assets))
+	for i := range m.available.Assets {
+		asset := &m.available.Assets[i]
+		sources = append(sources, downloadunpack.Source{
+			Name: asset.Name,
+			URL:  asset.BrowserDownloadURL,
+			Size: asset.Size,
+		})
 	}
-	item := downutils.DownItem{
-		Module:       "update",
-		FileName:     m.asset.Name,
-		DownloadURLs: []string{m.asset.BrowserDownloadURL},
-		KeepUpdated:  "enable",
-		StorageDir:   stageDir,
-		Enable:       true,
-		Checksum:     "sha256:" + m.checksum.BrowserDownloadURL,
-		CheckSize:    checkSize,
-		MaxSize:      maxAssetSize,
+	selected, err := downloadunpack.SelectSource(sources, assetPattern)
+	if err != nil {
+		return nil, fmt.Errorf("select update package: %w", err)
+	}
+	if selected.Size < 0 || selected.Size > maxAssetSize {
+		return nil, fmt.Errorf("update package size is invalid: %d", selected.Size)
+	}
+	if err := validateGitHubDownloadURL(selected.URL); err != nil {
+		return nil, fmt.Errorf("invalid update package URL: %w", err)
+	}
+	for i := range sources {
+		if sources[i].Name == selected.Name && sources[i].URL == selected.URL {
+			sources[i].Checksum = "sha256:" + m.checksum.BrowserDownloadURL
+		}
 	}
 	options := downutils.NewDefaultDownOptions()
 	options.ShowProgress = false
 	options.MaxRetries = 1
-	result, err := downutils.ExecuteDownloadsWithClientContext(ctx, options, downutils.DownConfig{
-		"update": {item},
-	}, m.dlClient)
+	prepared, err := downloadunpack.Prepare(ctx, downloadunpack.ResourceRequest{
+		Sources:          sources,
+		SourcePattern:    assetPattern,
+		ExtractAs:        string(downloadunpack.ModeAuto),
+		PayloadPattern:   payloadPattern,
+		StageParent:      m.root,
+		MaxDownloadBytes: maxAssetSize,
+		DownloadOptions:  options,
+		HTTPClient:       m.dlClient,
+		ExtractOptions: dezip.Options{
+			MaxEntries:       maxUpdateArchiveEntries,
+			MaxExpandedBytes: maxUpdateArchiveExpandedBytes,
+			AllowSymlinks:    true,
+		},
+	})
 	if err != nil {
-		return nil, fmt.Errorf("download update package: %w", err)
+		return nil, fmt.Errorf("prepare update package: %w", err)
 	}
-	if result == nil || result.SuccessItems != 1 || len(result.TaskInfos) != 1 || result.TaskInfos[0].Status != downutils.TaskStatusSuccess {
-		if result != nil && len(result.TaskInfos) == 1 && result.TaskInfos[0].ErrorMsg != "" {
-			return nil, fmt.Errorf("download update package: %s", result.TaskInfos[0].ErrorMsg)
+	keepStage := false
+	defer func() {
+		if !keepStage {
+			_ = prepared.Cleanup()
 		}
-		return nil, errors.New("download update package: downloader did not report one successful task")
+	}()
+	if prepared.Source.Name != m.asset.Name || prepared.Source.URL != m.asset.BrowserDownloadURL {
+		return nil, errors.New("prepared update package differs from the checked release asset")
 	}
-	archivePath := filepath.Join(stageDir, m.asset.Name)
-	extractDir := filepath.Join(stageDir, "unpacked")
-	sourcePath, err := extractPayload(ctx, archivePath, extractDir)
-	if err != nil {
-		return nil, err
-	}
-	if err := os.Remove(archivePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(prepared.Download.StoragePath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
 
 	staged := &stagedUpdate{
 		Version:    m.available.TagName,
 		ReleaseURL: m.available.HTMLURL,
-		AssetName:  m.asset.Name,
-		StageDir:   stageDir,
-		SourcePath: sourcePath,
+		AssetName:  prepared.Source.Name,
+		StageDir:   prepared.StageDir,
+		SourcePath: prepared.PayloadPath,
 	}
 	oldStaged := m.staged
 	if err := m.persistPending(staged); err != nil {
@@ -324,6 +357,7 @@ func (m *Manager) clearAvailable() {
 	m.available = nil
 	m.asset = nil
 	m.checksum = nil
+	m.assetPattern = ""
 	m.mu.Unlock()
 }
 
@@ -410,6 +444,45 @@ func assetNameForPlatform() (string, error) {
 		}
 	}
 	return "", fmt.Errorf("automatic updates are not available for %s/%s", runtime.GOOS, runtime.GOARCH)
+}
+
+func assetPatternForPlatform() (string, error) {
+	return assetPatternFor(runtime.GOOS, runtime.GOARCH)
+}
+
+func assetPatternFor(goos, goarch string) (string, error) {
+	switch goos {
+	case "windows":
+		if goarch == "amd64" {
+			return "netgapgui-windows-amd64*.zip", nil
+		}
+	case "linux":
+		if goarch == "amd64" {
+			return "netgapgui-linux-amd64*.tar.gz", nil
+		}
+	case "darwin":
+		if goarch == "amd64" || goarch == "arm64" {
+			return "netgapgui-macos-universal*.zip", nil
+		}
+	}
+	return "", fmt.Errorf("automatic updates are not available for %s/%s", goos, goarch)
+}
+
+func payloadPatternForPlatform() (string, error) {
+	return payloadPatternFor(runtime.GOOS)
+}
+
+func payloadPatternFor(goos string) (string, error) {
+	switch goos {
+	case "windows":
+		return "netgapgui.exe", nil
+	case "linux":
+		return "netgapgui", nil
+	case "darwin":
+		return "netgapgui.app", nil
+	default:
+		return "", fmt.Errorf("automatic updates are not available for %s", goos)
+	}
 }
 
 func validVersion(version string) bool {

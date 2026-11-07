@@ -150,6 +150,14 @@ def main() -> int:
                     output.seek(0)
                     detail = output.read().decode("utf-8", errors="replace")
                     raise RuntimeError(f"GUI exited during startup with {process.returncode}:\n{detail}")
+                else:
+                    time.sleep(2)
+                    if process.poll() is not None:
+                        output.seek(0)
+                        detail = output.read().decode("utf-8", errors="replace")
+                        raise RuntimeError(
+                            f"GUI exited shortly after startup with {process.returncode}:\n{detail}"
+                        )
                 print(f"PASS: extracted {args.platform} GUI archive and observed process startup")
             finally:
                 if args.platform == "windows":

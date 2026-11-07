@@ -54,6 +54,79 @@ func TestCompareVersions(t *testing.T) {
 	}
 }
 
+func TestPlatformAssetAndPayloadPatterns(t *testing.T) {
+	tests := []struct {
+		goos        string
+		goarch      string
+		asset       string
+		payload     string
+		unsupported bool
+	}{
+		{goos: "windows", goarch: "amd64", asset: "netgapgui-windows-amd64*.zip", payload: "netgapgui.exe"},
+		{goos: "linux", goarch: "amd64", asset: "netgapgui-linux-amd64*.tar.gz", payload: "netgapgui"},
+		{goos: "darwin", goarch: "amd64", asset: "netgapgui-macos-universal*.zip", payload: "netgapgui.app"},
+		{goos: "darwin", goarch: "arm64", asset: "netgapgui-macos-universal*.zip", payload: "netgapgui.app"},
+		{goos: "windows", goarch: "arm64", unsupported: true},
+	}
+	for _, test := range tests {
+		t.Run(test.goos+"/"+test.goarch, func(t *testing.T) {
+			asset, assetErr := assetPatternFor(test.goos, test.goarch)
+			payload, payloadErr := payloadPatternFor(test.goos)
+			if test.unsupported {
+				if assetErr == nil || payloadErr != nil {
+					t.Fatalf("unsupported platform errors: asset=%v payload=%v", assetErr, payloadErr)
+				}
+				return
+			}
+			if assetErr != nil || payloadErr != nil {
+				t.Fatalf("platform pattern errors: asset=%v payload=%v", assetErr, payloadErr)
+			}
+			if asset != test.asset || payload != test.payload {
+				t.Fatalf("patterns = (%q, %q), want (%q, %q)", asset, payload, test.asset, test.payload)
+			}
+		})
+	}
+}
+
+func TestLoadPendingRestoresDownloadedUpdateAfterRestart(t *testing.T) {
+	root := t.TempDir()
+	stageDir := filepath.Join(root, "stage-restart")
+	sourcePath := filepath.Join(stageDir, "extracted", "netgapgui.exe")
+	if err := os.MkdirAll(filepath.Dir(sourcePath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sourcePath, []byte("staged payload"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	staged := stagedUpdate{
+		Version:    "v1.1.0",
+		ReleaseURL: "https://github.com/" + repository + "/releases/tag/v1.1.0",
+		AssetName:  "netgapgui-windows-amd64-v1.1.0.zip",
+		StageDir:   stageDir,
+		SourcePath: sourcePath,
+	}
+	pendingPath := filepath.Join(root, "pending.json")
+	data, err := json.Marshal(staged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pendingPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := &Manager{root: root, pendingPath: pendingPath}
+	if err := restarted.loadPending(); err != nil {
+		t.Fatalf("restore pending update after restart: %v", err)
+	}
+	pending := restarted.Pending("v1.0.0")
+	if pending == nil || !pending.Downloaded || pending.LatestVersion != staged.Version {
+		t.Fatalf("restored pending update = %+v", pending)
+	}
+	if restarted.staged == nil || restarted.staged.SourcePath != sourcePath {
+		t.Fatalf("restored payload path = %+v, want %q", restarted.staged, sourcePath)
+	}
+}
+
 func TestCheckAndDownloadVerifiesAndPersistsUpdate(t *testing.T) {
 	manager, assetName, requests := newTestManager(t, "")
 	check, err := manager.Check(context.Background(), "v1.0.0")
@@ -89,6 +162,33 @@ func TestCheckAndDownloadVerifiesAndPersistsUpdate(t *testing.T) {
 	assertUpdateDownloadRequests(t, requests, assetName)
 }
 
+func TestCheckAndDownloadSelectsVersionedAssetName(t *testing.T) {
+	assetName, err := assetNameForPlatform()
+	if err != nil {
+		t.Skip(err)
+	}
+	if strings.HasSuffix(assetName, ".tar.gz") {
+		assetName = strings.TrimSuffix(assetName, ".tar.gz") + "-v1.1.0.tar.gz"
+	} else {
+		assetName = strings.TrimSuffix(assetName, ".zip") + "-v1.1.0.zip"
+	}
+	manager, assetName, requests := newTestManagerWithAssetName(t, "", assetName)
+	check, err := manager.Check(context.Background(), "v1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !check.Available {
+		t.Fatalf("versioned release asset was not selected: %+v", check)
+	}
+	if _, err := manager.Download(context.Background()); err != nil {
+		t.Fatalf("download versioned release asset: %v", err)
+	}
+	if manager.staged == nil || manager.staged.AssetName != assetName {
+		t.Fatalf("staged asset = %+v, want %q", manager.staged, assetName)
+	}
+	assertUpdateDownloadRequests(t, requests, assetName)
+}
+
 func TestDownloadRejectsChecksumMismatch(t *testing.T) {
 	manager, assetName, requests := newTestManager(t, strings.Repeat("0", 64))
 	if _, err := manager.Check(context.Background(), "v1.0.0"); err != nil {
@@ -111,6 +211,24 @@ func TestDownloadRejectsChecksumMismatch(t *testing.T) {
 		t.Fatalf("checksum mismatch left staged files behind: %v", entries)
 	}
 	assertUpdateDownloadRequests(t, requests, assetName)
+}
+
+func TestDownloadCleansStageWhenPendingPersistenceFails(t *testing.T) {
+	manager, _, _ := newTestManager(t, "")
+	if _, err := manager.Check(context.Background(), "v1.0.0"); err != nil {
+		t.Fatal(err)
+	}
+	manager.pendingPath = filepath.Join(manager.root, "missing", "pending.json")
+	if _, err := manager.Download(context.Background()); err == nil {
+		t.Fatal("expected pending metadata persistence to fail")
+	}
+	entries, err := os.ReadDir(manager.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("failed persistence left staged files behind: %v", entries)
+	}
 }
 
 func TestDownloadRejectsNonGitHubURLsBeforeStaging(t *testing.T) {
@@ -194,6 +312,11 @@ func newTestManager(t *testing.T, checksumOverride string) (*Manager, string, ma
 	if err != nil {
 		t.Skip(err)
 	}
+	return newTestManagerWithAssetName(t, checksumOverride, assetName)
+}
+
+func newTestManagerWithAssetName(t *testing.T, checksumOverride, assetName string) (*Manager, string, map[string]int) {
+	t.Helper()
 	archive := makeTestArchive(t)
 	archiveHash := sha256.Sum256(archive)
 	checksum := hex.EncodeToString(archiveHash[:])

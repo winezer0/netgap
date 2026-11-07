@@ -1,0 +1,58 @@
+name: Live Updater Acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: updater-live-acceptance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  download-verify-extract:
+    name: Live Release ${{ matrix.id }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            id: windows-amd64
+          - os: ubuntu-24.04
+            id: linux-amd64
+          - os: macos-latest
+            id: macos-universal
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download, verify, and extract the latest stable GitHub Release
+        env:
+          NETGAP_LIVE_UPDATE_ACCEPTANCE: "1"
+        run: |
+          mkdir -p build/evidence
+          go test -tags acceptance -v \
+            -run '^TestLiveGitHubReleaseDownloadAndExtract$' -count=1 -timeout=20m \
+            ./internal/guiapp/updater \
+            2>&1 | tee "build/evidence/live-updater-${{ matrix.id }}.txt"
+
+      - name: Upload live acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: live-updater-${{ matrix.id }}
+          path: build/evidence/
+          if-no-files-found: warn
+          retention-days: 14
