@@ -1,6 +1,9 @@
 name: Release Build
 
 on:
+  push:
+    tags:
+      - 'v*'
   release:
     types: [published, prereleased]
   workflow_dispatch:
@@ -80,7 +83,7 @@ jobs:
       - name: Check frontend and build GUI
         working-directory: cmd/netgapgui
         env:
-          VITE_APP_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.release.tag_name }}
+          VITE_APP_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.release.tag_name || github.ref_name }}
         run: node build.mjs -clean -m -platform "${{ matrix.platform }}"
 
       - name: Archive Windows build
@@ -125,10 +128,10 @@ jobs:
       - name: Create release if needed and upload builds
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.release.tag_name || github.ref_name }}
         shell: bash
         run: |
-          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]] && ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          if [[ "$GITHUB_EVENT_NAME" != "release" ]] && ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             release_args=()
             if [[ "$RELEASE_TAG" == *-* ]]; then
               release_args+=(--prerelease)
