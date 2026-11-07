@@ -40,6 +40,7 @@ jobs:
 
       - name: Download, verify, and extract the latest stable GitHub Release
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           NETGAP_LIVE_UPDATE_ACCEPTANCE: "1"
         run: |
           mkdir -p build/evidence

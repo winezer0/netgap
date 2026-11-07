@@ -20,10 +20,14 @@ func TestLiveGitHubReleaseDownloadAndExtract(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 	root := t.TempDir()
+	apiClient := &http.Client{Timeout: 30 * time.Second}
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		apiClient.Transport = githubTokenRoundTripper{token: token}
+	}
 	manager := &Manager{
 		root:        root,
 		pendingPath: filepath.Join(root, "pending.json"),
-		apiClient:   &http.Client{Timeout: 30 * time.Second},
+		apiClient:   apiClient,
 		dlClient:    &http.Client{Timeout: 10 * time.Minute},
 	}
 	check, err := manager.Check(ctx, "v0.0.0")
@@ -39,8 +43,15 @@ func TestLiveGitHubReleaseDownloadAndExtract(t *testing.T) {
 	if manager.staged == nil {
 		t.Fatal("verified Release payload was not staged")
 	}
-	if !withinRoot(root, manager.staged.StageDir) || !withinRoot(root, manager.staged.SourcePath) {
-		t.Fatalf("staged paths escaped temporary acceptance root: %+v", manager.staged)
+	stageWithin := withinRoot(root, manager.staged.StageDir)
+	sourceWithin := withinRoot(root, manager.staged.SourcePath)
+	if !stageWithin || !sourceWithin {
+		rootAbs, _ := filepath.Abs(root)
+		stageAbs, _ := filepath.Abs(manager.staged.StageDir)
+		sourceAbs, _ := filepath.Abs(manager.staged.SourcePath)
+		stageRel, stageErr := filepath.Rel(rootAbs, stageAbs)
+		sourceRel, sourceErr := filepath.Rel(rootAbs, sourceAbs)
+		t.Fatalf("staged paths escaped temporary acceptance root: root=%q stage=%q (rel=%q err=%v within=%t) source=%q (rel=%q err=%v within=%t)", rootAbs, stageAbs, stageRel, stageErr, stageWithin, sourceAbs, sourceRel, sourceErr, sourceWithin)
 	}
 	info, err := os.Stat(manager.staged.SourcePath)
 	if err != nil {
@@ -60,4 +71,14 @@ func TestLiveGitHubReleaseDownloadAndExtract(t *testing.T) {
 	t.Logf("downloaded and verified %s (%s); payload=%s", check.LatestVersion, manager.staged.AssetName, manager.staged.SourcePath)
 	// t.TempDir removes the downloaded archive, extracted payload, and metadata.
 	// Install is intentionally not called: this acceptance test never replaces the running application.
+}
+
+type githubTokenRoundTripper struct {
+	token string
+}
+
+func (t githubTokenRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	authenticated := request.Clone(request.Context())
+	authenticated.Header.Set("Authorization", "Bearer "+t.token)
+	return http.DefaultTransport.RoundTrip(authenticated)
 }
