@@ -18,7 +18,7 @@ const props = defineProps({
   translate: { type: Function, required: true },
 })
 
-const emit = defineEmits(['cancel', 'save', 'check-updates', 'download-update', 'restart-update'])
+const emit = defineEmits(['cancel', 'save', 'check-updates', 'download-update'])
 const draft = reactive({
   closeAction: 'tray',
   removeRouteOnMatch: true,
@@ -126,20 +126,12 @@ const save = () => emit('save', { ...draft })
               {{ translate('checkForUpdates') }}
             </button>
             <button
-              v-if="updatePhase === 'available'"
               class="startupBtn"
               type="button"
+              :disabled="updatePhase !== 'available'"
               @click="emit('download-update')"
             >
               {{ translate('downloadUpdate') }}
-            </button>
-            <button
-              v-if="updatePhase === 'downloaded'"
-              class="startupBtn"
-              type="button"
-              @click="emit('restart-update')"
-            >
-              {{ translate('restartToUpdate') }}
             </button>
           </div>
         </div>
@@ -235,8 +227,9 @@ h2 {
   gap: 12px;
 }
 .updateCheckbox { display: flex; align-items: center; gap: 8px; margin: 0; white-space: nowrap; }
-.updateActions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; width: 100%; }
+.updateActions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
 .updateActions .startupBtn { width: 100%; min-width: 0; }
+.updateActions .startupBtn:disabled { border-color: #344251; background: #1e2631; color: #8593a3; opacity: 1; }
 .startupHint { font-size: 12px; color: #a9bad0; line-height: 1.5; }
 .startupError { font-size: 12px; color: #ff9c9c; overflow-wrap: anywhere; }
 .updateMetaRow { align-items: start; margin-top: 8px; }

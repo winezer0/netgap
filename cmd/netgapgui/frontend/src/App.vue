@@ -213,7 +213,6 @@ const savePreferences = async (preferences) => {
       @save="savePreferences"
       @check-updates="checkForUpdates"
       @download-update="downloadUpdate"
-      @restart-update="restartToUpdate"
     />
     <ConfigPanel
       v-model:interval="state.interval"
