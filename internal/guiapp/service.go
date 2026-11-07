@@ -160,6 +160,7 @@ func (s *Service) State() *ViewState {
 		RemoveRouteOnMatch:  settings.RemoveRouteOnMatch,
 		NotificationPopup:   settings.NotificationPopup,
 		AutoCheckUpdates:    settings.AutoCheckUpdates,
+		LastUpdateCheckAt:   settings.LastUpdateCheckAt,
 		Logs:                lines,
 		ErrorCount:          errorCount,
 		ConfigPath:          s.store.Path(),
@@ -191,6 +192,9 @@ func (s *Service) SaveSettings(input *configstore.Settings) (*ViewState, error) 
 		}
 	}
 	s.mu.Lock()
+	if s.settings != nil {
+		normalized.LastUpdateCheckAt = s.settings.LastUpdateCheckAt
+	}
 	if err := s.store.Save(normalized); err != nil {
 		s.mu.Unlock()
 		return nil, err

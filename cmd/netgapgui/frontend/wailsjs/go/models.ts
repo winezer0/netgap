@@ -34,6 +34,7 @@ export namespace configstore {
 	    removeRouteOnMatch: boolean;
 	    notificationPopup: boolean;
 	    autoCheckUpdates: boolean;
+	    lastUpdateCheckAt: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -53,6 +54,7 @@ export namespace configstore {
 	        this.removeRouteOnMatch = source["removeRouteOnMatch"];
 	        this.notificationPopup = source["notificationPopup"];
 	        this.autoCheckUpdates = source["autoCheckUpdates"];
+	        this.lastUpdateCheckAt = source["lastUpdateCheckAt"];
 	    }
 	}
 
@@ -176,6 +178,7 @@ export namespace guiapp {
 	    removeRouteOnMatch: boolean;
 	    notificationPopup: boolean;
 	    autoCheckUpdates: boolean;
+	    lastUpdateCheckAt: string;
 	    logs: string[];
 	    errorCount: number;
 	    configPath: string;
@@ -206,6 +209,7 @@ export namespace guiapp {
 	        this.removeRouteOnMatch = source["removeRouteOnMatch"];
 	        this.notificationPopup = source["notificationPopup"];
 	        this.autoCheckUpdates = source["autoCheckUpdates"];
+	        this.lastUpdateCheckAt = source["lastUpdateCheckAt"];
 	        this.logs = source["logs"];
 	        this.errorCount = source["errorCount"];
 	        this.configPath = source["configPath"];

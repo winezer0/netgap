@@ -16,6 +16,7 @@ const state = reactive({
   removeRouteOnMatch: true,
   notificationPopup: true,
   autoCheckUpdates: false,
+  lastUpdateCheckAt: '',
   autoStartMonitoring: false,
   startMinimized: false,
   logs: [],
@@ -62,6 +63,7 @@ function mergeState(payload) {
   state.removeRouteOnMatch = payload.removeRouteOnMatch ?? state.removeRouteOnMatch
   state.notificationPopup = payload.notificationPopup ?? state.notificationPopup
   state.autoCheckUpdates = payload.autoCheckUpdates ?? state.autoCheckUpdates
+  state.lastUpdateCheckAt = payload.lastUpdateCheckAt ?? state.lastUpdateCheckAt
   state.autoStartMonitoring = payload.autoStartMonitoring ?? state.autoStartMonitoring
   state.startMinimized = payload.startMinimized ?? state.startMinimized
   state.logs = payload.logs ?? state.logs

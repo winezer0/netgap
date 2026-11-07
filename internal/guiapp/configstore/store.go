@@ -29,6 +29,7 @@ type Settings struct {
 	RemoveRouteOnMatch  bool     `json:"removeRouteOnMatch" yaml:"remove_route_on_match"`
 	NotificationPopup   bool     `json:"notificationPopup" yaml:"notification_popup"`
 	AutoCheckUpdates    bool     `json:"autoCheckUpdates" yaml:"auto_check_updates"`
+	LastUpdateCheckAt   string   `json:"lastUpdateCheckAt" yaml:"last_update_check_at"`
 }
 
 // Store 表示 GUI 配置存储对象。
@@ -126,6 +127,7 @@ func NormalizeSettings(settings *Settings) *Settings {
 		RemoveRouteOnMatch:  settings.RemoveRouteOnMatch,
 		NotificationPopup:   settings.NotificationPopup,
 		AutoCheckUpdates:    settings.AutoCheckUpdates,
+		LastUpdateCheckAt:   strings.TrimSpace(settings.LastUpdateCheckAt),
 	}
 	if len(result.Regions) == 0 {
 		result.Regions = DefaultSettings().Regions

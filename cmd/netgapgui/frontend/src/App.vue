@@ -100,6 +100,7 @@ async function runUpdateCheck(autoDownload) {
   updateError.value = ''
   try {
     const result = await backend.checkForUpdates(appVersion)
+    if (result.lastCheckedAt) state.lastUpdateCheckAt = result.lastCheckedAt
     updateVersion.value = result.latestVersion || ''
     if (!result.available) {
       updatePhase.value = 'current'
@@ -116,7 +117,7 @@ async function runUpdateCheck(autoDownload) {
 }
 
 async function checkForUpdates() {
-  await runUpdateCheck(Boolean(state.autoCheckUpdates))
+  await runUpdateCheck(false)
 }
 
 async function downloadUpdate() {
@@ -206,6 +207,7 @@ const savePreferences = async (preferences) => {
       :update-phase="updatePhase"
       :update-version="updateVersion"
       :update-error="updateError"
+      :last-update-check-at="state.lastUpdateCheckAt"
       :translate="t"
       @cancel="settingsVisible = false"
       @save="savePreferences"

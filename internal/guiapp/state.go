@@ -16,6 +16,7 @@ type ViewState struct {
 	RemoveRouteOnMatch  bool           `json:"removeRouteOnMatch"`
 	NotificationPopup   bool           `json:"notificationPopup"`
 	AutoCheckUpdates    bool           `json:"autoCheckUpdates"`
+	LastUpdateCheckAt   string         `json:"lastUpdateCheckAt"`
 	Logs                []string       `json:"logs"`
 	ErrorCount          uint64         `json:"errorCount"`
 	ConfigPath          string         `json:"configPath"`

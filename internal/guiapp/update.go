@@ -11,20 +11,46 @@ import (
 func (s *Service) CheckForUpdates(currentVersion string) (map[string]any, error) {
 	manager, err := s.getUpdateManager()
 	if err != nil {
+		s.recordUpdateCheckCompletion()
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(s.operationContext(), 30*time.Second)
 	defer cancel()
-	result, err := manager.Check(ctx, currentVersion)
-	if err != nil {
-		return nil, err
+	result, checkErr := manager.Check(ctx, currentVersion)
+	checkedAt := s.recordUpdateCheckCompletion()
+	if checkErr != nil {
+		return nil, checkErr
 	}
 	return map[string]any{
 		"available":      result.Available,
 		"currentVersion": result.CurrentVersion,
 		"latestVersion":  result.LatestVersion,
 		"releaseUrl":     result.ReleaseURL,
+		"lastCheckedAt":  checkedAt.Format(time.RFC3339Nano),
 	}, nil
+}
+
+func (s *Service) recordUpdateCheckCompletion() time.Time {
+	checkedAt := time.Now().UTC()
+	if err := s.recordUpdateCheckAt(checkedAt); err != nil {
+		s.writeLog("WARN", "Failed to persist last update check time: "+err.Error())
+	}
+	return checkedAt
+}
+
+func (s *Service) recordUpdateCheckAt(checkedAt time.Time) error {
+	s.mu.Lock()
+	settings := cloneSettings(s.settings)
+	settings.LastUpdateCheckAt = checkedAt.UTC().Format(time.RFC3339Nano)
+	s.settings = settings
+	var err error
+	if s.store != nil {
+		err = s.store.Save(settings)
+	}
+	s.mu.Unlock()
+
+	s.emitState()
+	return err
 }
 
 func (s *Service) DownloadUpdate() (map[string]any, error) {

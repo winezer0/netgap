@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { backend } from '../services/backend'
 
 const props = defineProps({
@@ -14,6 +14,7 @@ const props = defineProps({
   updatePhase: { type: String, default: 'idle' },
   updateVersion: { type: String, default: '' },
   updateError: { type: String, default: '' },
+  lastUpdateCheckAt: { type: String, default: '' },
   translate: { type: Function, required: true },
 })
 
@@ -31,6 +32,14 @@ const startup = ref(null)
 const startupBusy = ref(false)
 const startupError = ref('')
 let startupRequest = 0
+
+const lastUpdateCheckText = computed(() => {
+  if (!props.lastUpdateCheckAt) return props.translate('updateNeverChecked')
+  const checkedAt = new Date(props.lastUpdateCheckAt)
+  if (Number.isNaN(checkedAt.getTime())) return props.translate('updateNeverChecked')
+  const locale = props.language === 'en' ? 'en-US' : 'zh-CN'
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'short', timeStyle: 'short' }).format(checkedAt)
+})
 
 async function loadStartup() {
   const request = ++startupRequest
@@ -104,42 +113,46 @@ const save = () => emit('save', { ...draft })
       <div class="updateSection">
         <div class="updateControls">
           <label class="checkboxRow updateCheckbox">
-          <span>{{ translate('autoCheckUpdates') }}</span>
-          <input v-model="draft.autoCheckUpdates" type="checkbox" :aria-label="translate('autoCheckUpdates')" />
+            <span>{{ translate('autoCheckUpdates') }}</span>
+            <input v-model="draft.autoCheckUpdates" type="checkbox" :aria-label="translate('autoCheckUpdates')" />
           </label>
           <div class="updateActions">
-          <button
-            class="startupBtn"
-            type="button"
-            :disabled="['checking', 'downloading', 'restarting'].includes(updatePhase)"
-            @click="emit('check-updates')"
-          >
-            {{ translate(updatePhase === 'checking' ? 'checkingUpdates' : 'checkForUpdates') }}
-          </button>
-          <button
-            v-if="updatePhase === 'available' && !autoCheckUpdates"
-            class="startupBtn"
-            type="button"
-            @click="emit('download-update')"
-          >
-            {{ translate('downloadUpdate') }}
-          </button>
-          <button
-            v-if="updatePhase === 'downloaded'"
-            class="startupBtn"
-            type="button"
-            @click="emit('restart-update')"
-          >
-            {{ translate('restartToUpdate') }}
-          </button>
+            <button
+              class="startupBtn"
+              type="button"
+              :disabled="['checking', 'downloading', 'restarting'].includes(updatePhase)"
+              @click="emit('check-updates')"
+            >
+              {{ translate('checkForUpdates') }}
+            </button>
+            <button
+              v-if="updatePhase === 'available'"
+              class="startupBtn"
+              type="button"
+              @click="emit('download-update')"
+            >
+              {{ translate('downloadUpdate') }}
+            </button>
+            <button
+              v-if="updatePhase === 'downloaded'"
+              class="startupBtn"
+              type="button"
+              @click="emit('restart-update')"
+            >
+              {{ translate('restartToUpdate') }}
+            </button>
           </div>
         </div>
-        <p v-if="updatePhase === 'checking'" class="startupHint">{{ translate('checkingUpdates') }}</p>
-        <p v-else-if="updatePhase === 'downloading'" class="startupHint">{{ translate('downloadingUpdate') }}</p>
-        <p v-else-if="updatePhase === 'current'" class="startupHint">{{ translate('upToDate') }}</p>
-        <p v-else-if="updatePhase === 'available'" class="startupHint">{{ translate('updateAvailable') }} {{ updateVersion }}</p>
-        <p v-else-if="updatePhase === 'downloaded'" class="startupHint">{{ translate('updateDownloaded') }} {{ updateVersion }}</p>
-        <p v-else-if="updatePhase === 'error'" role="alert" class="startupError">{{ translate('updateFailed') }}: {{ updateError }}</p>
+        <div class="updateMetaRow">
+          <p class="updateLastChecked">{{ translate('lastUpdateCheck') }} {{ lastUpdateCheckText }}</p>
+          <p v-if="updatePhase === 'checking'" class="updateStatus startupHint">{{ translate('checkingUpdates') }}</p>
+          <p v-else-if="updatePhase === 'downloading'" class="updateStatus startupHint">{{ translate('downloadingUpdate') }}</p>
+          <p v-else-if="updatePhase === 'restarting'" class="updateStatus startupHint">{{ translate('restartingUpdate') }}</p>
+          <p v-else-if="updatePhase === 'current'" class="updateStatus startupHint">{{ translate('upToDate') }}</p>
+          <p v-else-if="updatePhase === 'available'" class="updateStatus startupHint">{{ translate('updateAvailable') }} {{ updateVersion }}</p>
+          <p v-else-if="updatePhase === 'downloaded'" class="updateStatus startupHint">{{ translate('updateDownloaded') }} {{ updateVersion }}</p>
+          <p v-else-if="updatePhase === 'error'" role="alert" class="updateStatus startupError">{{ translate('updateFailed') }}: {{ updateError }}</p>
+        </div>
       </div>
 
       <label class="settingRow">
@@ -215,11 +228,21 @@ h2 {
 
 .startupSection { margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #344251; }
 .updateSection { margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #344251; }
-.updateControls { display: flex; align-items: center; gap: 12px; }
+.updateControls, .updateMetaRow {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(170px, 1.2fr);
+  align-items: center;
+  gap: 12px;
+}
 .updateCheckbox { display: flex; align-items: center; gap: 8px; margin: 0; white-space: nowrap; }
-.updateActions { display: flex; justify-content: flex-end; gap: 8px; margin-left: auto; }
+.updateActions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; width: 100%; }
+.updateActions .startupBtn { width: 100%; min-width: 0; }
 .startupHint { font-size: 12px; color: #a9bad0; line-height: 1.5; }
 .startupError { font-size: 12px; color: #ff9c9c; overflow-wrap: anywhere; }
+.updateMetaRow { align-items: start; margin-top: 8px; }
+.updateLastChecked, .updateStatus { min-width: 0; margin: 0; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.updateLastChecked { color: #a9bad0; }
+.updateStatus { justify-self: end; text-align: right; }
 .startupBtn { padding: 7px; border: 1px solid #405268; border-radius: 6px; background: #263549; color: #eff4fb; cursor: pointer; }
 .startupBtn:disabled { opacity: 0.6; cursor: default; }
 .checkboxRow { cursor: pointer; }
@@ -268,8 +291,9 @@ select {
 }
 
 @media (max-width: 420px) {
-  .updateControls { flex-wrap: wrap; }
-  .updateCheckbox { width: auto; }
+  .updateControls, .updateMetaRow { grid-template-columns: 1fr; }
+  .updateCheckbox { white-space: normal; }
+  .updateStatus { justify-self: start; text-align: left; }
   .settingRow {
     grid-template-columns: 1fr;
     gap: 6px;
