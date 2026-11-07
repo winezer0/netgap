@@ -564,7 +564,15 @@ func withinRoot(root, path string) bool {
 	if err != nil {
 		return false
 	}
-	rel, err := filepath.Rel(rootAbs, pathAbs)
+	rootResolved, err := filepath.EvalSymlinks(rootAbs)
+	if err != nil {
+		return false
+	}
+	pathResolved, err := filepath.EvalSymlinks(pathAbs)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(rootResolved, pathResolved)
 	if err != nil || rel == "." || filepath.IsAbs(rel) {
 		return false
 	}

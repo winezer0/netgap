@@ -88,6 +88,40 @@ func TestPlatformAssetAndPayloadPatterns(t *testing.T) {
 	}
 }
 
+func TestWithinRootResolvesFilesystemAliases(t *testing.T) {
+	root := t.TempDir()
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Clean(root) == filepath.Clean(resolvedRoot) {
+		t.Skip("temporary directory has no alternate filesystem path")
+	}
+	payload := filepath.Join(resolvedRoot, "payload")
+	if err := os.WriteFile(payload, []byte("payload"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !withinRoot(root, payload) {
+		t.Fatalf("payload through resolved path %q should be within root %q", payload, root)
+	}
+}
+
+func TestWithinRootRejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	payload := filepath.Join(outside, "payload")
+	if err := os.WriteFile(payload, []byte("payload"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "outside")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("directory symlink unavailable: %v", err)
+	}
+	if withinRoot(root, filepath.Join(link, "payload")) {
+		t.Fatal("payload reached through an external directory symlink must be rejected")
+	}
+}
+
 func TestLoadPendingRestoresDownloadedUpdateAfterRestart(t *testing.T) {
 	root := t.TempDir()
 	stageDir := filepath.Join(root, "stage-restart")
