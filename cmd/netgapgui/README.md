@@ -35,9 +35,11 @@ open build/bin/netgapgui.app
 
 macOS 已实现系统固定代理/PAC/WPAD、网络变化检测及双栈全网卡默认路由后端，原生行为待验证，详见 [macOS 功能支持](../../docs/macos-support.md)。
 
-Linux Ubuntu 22.04/24.04 的历史完整 GUI 原生构建已通过；本次移除代理助手后的发行包需重新验收。Ubuntu 24.04 使用 WebKit 4.1 开发依赖并执行 `node build.mjs -tags webkit2_41`；Ubuntu 22.04 使用 WebKit 4.0，不再需要 PAC 模块。以下在 `cmd/netgapgui` 目录执行：
+Linux 自更新使用 `.tar.gz` 包，构建需要启用 dezip 完整格式。Ubuntu 22.04 使用 WebKit 4.0；Ubuntu 24.04 使用 WebKit 4.1。以下在 `cmd/netgapgui` 目录执行：
 
 ```sh
+node build.mjs -tags dezip_full
+# Ubuntu 24.04：node build.mjs -tags webkit2_41,dezip_full
 ```
 
 部署时保留助手与 GUI 相邻，使用匹配目标系统的构建产物。

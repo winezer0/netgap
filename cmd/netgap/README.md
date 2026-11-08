@@ -34,8 +34,10 @@ macOS 已增加 CFNetwork 系统代理/PAC/WPAD 和原生双栈默认路由后�
 Linux 只需构建 CLI，不再构建或部署 GIO 助手：
 
 ```sh
-go build -o netgap ./cmd/netgap
+go build -tags=dezip_full -o netgap ./cmd/netgap
 ```
+
+Linux 自更新使用 `.tar.gz` 包，因此需要 `dezip_full`；Windows 和 macOS 更新包为 ZIP，默认构建即可。
 
 Linux 自动代理模式直接查询系统路由出口（可能不同于浏览器代理出口），持续提示降级，仅告警、不自动断网；已保存的断网重试暂停且保留恢复数据。切回固定或无代理模式后恢复正常处理。
 

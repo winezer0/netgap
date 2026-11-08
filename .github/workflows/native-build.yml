@@ -30,13 +30,15 @@ jobs:
             platform: linux/amd64
             cli: netgap
             webkit_package: libwebkit2gtk-4.0-dev
+            go_flags: -tags=dezip_full
+            wails_tags: dezip_full
           - os: ubuntu-24.04
             id: ubuntu-24.04-amd64
             platform: linux/amd64
             cli: netgap
             webkit_package: libwebkit2gtk-4.1-dev
-            go_flags: -tags=webkit2_41
-            wails_tags: webkit2_41
+            go_flags: -tags=webkit2_41,dezip_full
+            wails_tags: webkit2_41,dezip_full
           - os: macos-15-intel
             id: macos-intel
             platform: darwin/amd64

@@ -42,6 +42,9 @@ func TestExtractZipRejectsPathTraversal(t *testing.T) {
 }
 
 func TestExtractTarGzRejectsPathTraversal(t *testing.T) {
+	if !fullFormatsEnabled {
+		t.Skip("TAR support requires the dezip_full build tag")
+	}
 	root := t.TempDir()
 	archivePath := filepath.Join(root, "unsafe.tar.gz")
 	archiveFile, err := os.Create(archivePath)

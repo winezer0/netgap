@@ -23,6 +23,7 @@ jobs:
             id: windows-amd64
           - os: ubuntu-24.04
             id: linux-amd64
+            test_tags: acceptance,dezip_full
           - os: macos-latest
             id: macos-universal
     defaults:
@@ -41,10 +42,11 @@ jobs:
       - name: Download, verify, and extract the latest stable GitHub Release
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          TEST_TAGS: ${{ matrix.test_tags || 'acceptance' }}
           NETGAP_LIVE_UPDATE_ACCEPTANCE: "1"
         run: |
           mkdir -p build/evidence
-          go test -tags acceptance -v \
+          go test -tags "$TEST_TAGS" -v \
             -run '^TestLiveGitHubReleaseDownloadAndExtract$' -count=1 -timeout=20m \
             ./internal/guiapp/updater \
             2>&1 | tee "build/evidence/live-updater-${{ matrix.id }}.txt"

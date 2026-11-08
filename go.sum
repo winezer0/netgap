@@ -212,10 +212,10 @@ github.com/wailsapp/mimetype v1.4.1 h1:pQN9ycO7uo4vsUUuPeHEYoUkLVkaRntMnHJxVwYhw
 github.com/wailsapp/mimetype v1.4.1/go.mod h1:9aV5k31bBOv5z6u+QP8TltzvNGJPmNJD4XlAL3U+j3o=
 github.com/wailsapp/wails/v2 v2.11.0 h1:seLacV8pqupq32IjS4Y7V8ucab0WZwtK6VvUVxSBtqQ=
 github.com/wailsapp/wails/v2 v2.11.0/go.mod h1:jrf0ZaM6+GBc1wRmXsM8cIvzlg0karYin3erahI4+0k=
-github.com/winezer0/dezip v0.0.1 h1:b9JSaUJgypNTtAvrcpAK7ryMNK0pelj8BaT4zYcTJwo=
-github.com/winezer0/dezip v0.0.1/go.mod h1:FUPaa9AV03ZfnoxNGflktOUTIkxhNiu1F9PbKbrrf6k=
-github.com/winezer0/downunpack v0.0.1 h1:kXHYAi3yZNbCzXQruHGWJyupLKXM2VtuJrCO6v9i5iw=
-github.com/winezer0/downunpack v0.0.1/go.mod h1:ZNL8ke9bLcnDXDMvLR6sJxiHtrig8HvxnL7LbKHbYBc=
+github.com/winezer0/dezip v0.0.2 h1:FfD7c+YThSvQt6L35iQKQApGzVKZUicI3tuQTIekKg4=
+github.com/winezer0/dezip v0.0.2/go.mod h1:FUPaa9AV03ZfnoxNGflktOUTIkxhNiu1F9PbKbrrf6k=
+github.com/winezer0/downunpack v0.0.2-0.20261108191740-01b48dcc79cd h1:PwyV0GM68eLmzNF/ANzvZZVkVWvryYH6XNMinIE3SG0=
+github.com/winezer0/downunpack v0.0.2-0.20261108191740-01b48dcc79cd/go.mod h1:WQsSyxU2DmSVnidbDdcIUEAGOZlydjqf/FEGZ6J71yY=
 github.com/winezer0/downutils v0.1.3 h1:sPtkyipwXYOHX9esD5AByT8xE3eKED1M15gFExRxN3c=
 github.com/winezer0/downutils v0.1.3/go.mod h1:iB9cSfbO6s7635Evnwu9q3xz+526X1iWKREvW4RN7n0=
 github.com/winezer0/ipinfo v0.1.0 h1:+0YuLmZZ2UUlnpqwaITJ8CcrMT7cXiQSb2KOsTUeT4w=

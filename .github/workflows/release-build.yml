@@ -32,6 +32,7 @@ jobs:
           - os: ubuntu-22.04
             platform: linux/amd64
             asset: netgapgui-linux-amd64.tar.gz
+            go_flags: -tags=dezip_full
           - os: macos-latest
             platform: darwin/universal
             asset: netgapgui-macos-universal.zip
@@ -84,6 +85,8 @@ jobs:
         working-directory: cmd/netgapgui
         env:
           VITE_APP_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.release.tag_name || github.ref_name }}
+        env:
+          GOFLAGS: ${{ matrix.go_flags || '' }}
         run: node build.mjs -clean -m -platform "${{ matrix.platform }}"
 
       - name: Archive Windows build

@@ -114,4 +114,6 @@ go build -o netgap.exe ./cmd/netgap
 cd cmd/netgapgui && node build.mjs
 ```
 
+Linux 发行构建需加 `dezip_full` tag（Ubuntu 24.04 GUI 还需 `webkit2_41`），因为 Linux 自更新包为 `.tar.gz`；Windows/macOS 更新包为 ZIP。
+
 具体运行方式和参数见各程序的独立 README。

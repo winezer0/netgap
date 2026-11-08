@@ -7,8 +7,8 @@ require (
 	github.com/gen2brain/beeep v0.11.3
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/wailsapp/wails/v2 v2.11.0
-	github.com/winezer0/dezip v0.0.1
-	github.com/winezer0/downunpack v0.0.1
+	github.com/winezer0/dezip v0.0.2
+	github.com/winezer0/downunpack v0.0.2-0.20261108191740-01b48dcc79cd
 	github.com/winezer0/downutils v0.1.3
 	github.com/winezer0/ipinfo v0.1.0
 	github.com/winezer0/slogs v0.1.2
