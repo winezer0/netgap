@@ -17,9 +17,8 @@ import (
 	"time"
 
 	"github.com/winezer0/dezip"
+	"github.com/winezer0/downunpack"
 	"github.com/winezer0/downutils"
-
-	"netgap/internal/downloadunpack"
 )
 
 const (

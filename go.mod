@@ -6,9 +6,9 @@ require (
 	github.com/cardinalby/go-systray v1.0.2
 	github.com/gen2brain/beeep v0.11.3
 	github.com/jessevdk/go-flags v1.6.1
-	github.com/mholt/archives v0.1.5
 	github.com/wailsapp/wails/v2 v2.11.0
 	github.com/winezer0/dezip v0.0.1
+	github.com/winezer0/downunpack v0.0.1
 	github.com/winezer0/downutils v0.1.3
 	github.com/winezer0/ipinfo v0.1.0
 	github.com/winezer0/slogs v0.1.2
@@ -47,6 +47,7 @@ require (
 	github.com/lionsoul2014/ip2region/binding/golang v0.0.0-20250919081619-7e599e05a08a // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mholt/archives v0.1.5 // indirect
 	github.com/mikelolasagasti/xz v1.0.1 // indirect
 	github.com/minio/minlz v1.0.1 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect

@@ -9,7 +9,7 @@ import (
 	"runtime"
 
 	"github.com/winezer0/dezip"
-	"netgap/internal/downloadunpack"
+	"github.com/winezer0/downunpack"
 )
 
 const (
