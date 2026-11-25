@@ -577,14 +577,6 @@ func RestoreAllDefaultRoutes(ctx context.Context) error {
 		return err
 	}
 	defer unlock()
-	if _, err := os.Stat(snapshotPath()); errors.Is(err, os.ErrNotExist) {
-		if err := stageLatestRouteBackup(snapshotPath()); err != nil {
-			if errors.Is(err, ErrNoRecoverySnapshot) {
-				return ErrNoRecoverySnapshot
-			}
-			return fmt.Errorf("cannot stage latest route backup for recovery: %w", err)
-		}
-	}
 	if err := restoreAllDefaultRoutes(ctx, snapshotBackend, snapshotPath()); err != nil {
 		if errors.Is(err, ErrNoRecoverySnapshot) {
 			return ErrNoRecoverySnapshot
@@ -592,31 +584,6 @@ func RestoreAllDefaultRoutes(ctx context.Context) error {
 		return fmt.Errorf("restore failed; recovery snapshot path: %s (preserve remaining data and use the same execution identity/data directory): %w", snapshotPath(), err)
 	}
 	return nil
-}
-
-func stageLatestRouteBackup(file string) error {
-	history, err := os.ReadFile(historyPath())
-	if errors.Is(err, os.ErrNotExist) {
-		return ErrNoRecoverySnapshot
-	}
-	if err != nil {
-		return err
-	}
-	lines := bytes.Split(bytes.TrimSpace(history), []byte("\n"))
-	if len(lines) == 0 || len(lines[len(lines)-1]) == 0 {
-		return ErrNoRecoverySnapshot
-	}
-	var record routeBackupRecord
-	if err := json.Unmarshal(lines[len(lines)-1], &record); err != nil || record.Version != snapshotVersion || record.SavedAt.IsZero() || len(record.Routes) == 0 {
-		return errors.New("latest route backup is invalid")
-	}
-	snapshot := &routeSnapshot{Version: snapshotVersion, SavedAt: record.SavedAt, Routes: record.Routes}
-	if compatibility, ok := snapshotBackend.(snapshotCompatibility); ok {
-		if err := compatibility.validateSnapshot(snapshot); err != nil {
-			return err
-		}
-	}
-	return saveSnapshot(file, snapshot)
 }
 
 func restoreAllDefaultRoutes(ctx context.Context, backend routeBackend, file string) error {

@@ -102,6 +102,7 @@ func NewService() (*Service, error) {
 
 	checker := monitorcore.NewChecker(resolver)
 	service.monitor = monitoring.NewManager(service.writeLog, checker.CheckProxyStatusResultContext)
+	service.monitor.SetRouteBackup(iproute.BackupDefaultRoutes)
 	service.monitor.SetHealthListener(service.emitHealth)
 	service.monitor.SetMatchListener(service.observeMatch)
 	return service, nil

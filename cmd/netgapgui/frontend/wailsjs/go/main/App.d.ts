@@ -24,11 +24,15 @@ export function GetPendingUpdate(arg1:string):Promise<Record<string, any>>;
 
 export function GetProxyConfigInfo():Promise<guiapp.ProxyConfigInfo>;
 
+export function GetRouteBackupDetail(arg1:string):Promise<iproute.RouteBackupDetail>;
+
 export function GetStartupStatus():Promise<autostart.Status>;
 
 export function HideToTray():Promise<void>;
 
 export function InstallUpdate():Promise<void>;
+
+export function ListRouteBackups():Promise<iproute.RouteBackupHistory>;
 
 export function LogUIError(arg1:string):Promise<void>;
 
@@ -43,6 +47,8 @@ export function RemoveRegion(arg1:string):Promise<guiapp.ViewState>;
 export function RestartAsAdmin():Promise<elevation.RestartResult>;
 
 export function RestoreDefaultRoute():Promise<guiapp.RouteActionResult>;
+
+export function RestoreRouteBackup(arg1:string,arg2:boolean):Promise<iproute.RouteBackupRestoreResult>;
 
 export function SaveSettings(arg1:configstore.Settings):Promise<guiapp.ViewState>;
 

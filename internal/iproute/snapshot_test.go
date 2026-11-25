@@ -1,6 +1,7 @@
 package iproute
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -217,25 +218,5 @@ func TestRouteBackupRetainsOnlyLatestHistory(t *testing.T) {
 	}
 	if got := bytes.Count(content, []byte("\n")); got != routeBackupHistoryLimit {
 		t.Fatalf("history has %d records", got)
-	}
-}
-
-func TestLatestRouteBackupCanBeStagedForManualRecovery(t *testing.T) {
-	dir := t.TempDir()
-	oldDir, oldBackend := cacheDirOverride, snapshotBackend
-	defer func() { cacheDirOverride, snapshotBackend = oldDir, oldBackend }()
-	cacheDirOverride = dir
-	f := &fakeRouteBackend{rows: fakeRoutes()}
-	snapshotBackend = f
-	if err := BackupDefaultRoutes(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	file := snapshotPath()
-	if err := stageLatestRouteBackup(file); err != nil {
-		t.Fatal(err)
-	}
-	snapshot, err := loadSnapshot(file)
-	if err != nil || len(snapshot.Routes) != len(fakeRoutes()) {
-		t.Fatalf("staged backup invalid: snapshot=%+v err=%v", snapshot, err)
 	}
 }

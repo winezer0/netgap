@@ -46,6 +46,7 @@ type Manager struct {
 	current            *monitorRun
 	active             atomic.Pointer[monitorRun]
 	check              CheckFunc
+	backupRoutesFn     func(context.Context) error
 	removeRoute        RemoveRouteFunc
 	logf               LoggerFunc
 	tickDuration       func(seconds int) time.Duration
@@ -55,6 +56,13 @@ type Manager struct {
 	healthRun          atomic.Pointer[monitorRun]
 	healthListener     atomic.Pointer[func(monitorcore.Health)]
 	matchListener      atomic.Pointer[func(MatchEvent)]
+}
+
+// SetRouteBackup installs the platform route snapshot operation for GUI runs.
+func (m *Manager) SetRouteBackup(backup func(context.Context) error) {
+	m.mu.Lock()
+	m.backupRoutesFn = backup
+	m.mu.Unlock()
 }
 
 // NewManager 创建监测管理器。
@@ -374,9 +382,15 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 }
 
 func (m *Manager) backupRoutes(run *monitorRun) {
+	m.mu.RLock()
+	backup := m.backupRoutesFn
+	m.mu.RUnlock()
+	if backup == nil {
+		return
+	}
 	ctx, cancel := context.WithTimeout(run.ctx, monitorcore.DisconnectAttemptTimeout)
 	defer cancel()
-	if err := iproute.BackupDefaultRoutes(ctx); err != nil {
+	if err := backup(ctx); err != nil {
 		m.writeRunLog(run, "WARN", "Default-route snapshot backup failed: "+err.Error())
 	}
 }

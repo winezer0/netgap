@@ -1,8 +1,8 @@
 {
   "name": "netgapgui",
   "outputfilename": "netgapgui",
-  "frontend:install": "npm ci",
-  "frontend:build": "npm run build",
+  "frontend:install": "",
+  "frontend:build": "npm run compile",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
@@ -12,7 +12,7 @@
   "info": {
     "companyName": "NetGap",
     "productName": "NetGapGUI",
-    "productVersion": "1.0.0",
+    "productVersion": "0.2.10",
     "copyright": "Copyright 2026",
     "comments": "IP Checker GUI Application"
   }

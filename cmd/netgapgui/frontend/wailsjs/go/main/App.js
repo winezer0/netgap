@@ -38,6 +38,10 @@ export function GetProxyConfigInfo() {
   return window['go']['main']['App']['GetProxyConfigInfo']();
 }
 
+export function GetRouteBackupDetail(arg1) {
+  return window['go']['main']['App']['GetRouteBackupDetail'](arg1);
+}
+
 export function GetStartupStatus() {
   return window['go']['main']['App']['GetStartupStatus']();
 }
@@ -48,6 +52,10 @@ export function HideToTray() {
 
 export function InstallUpdate() {
   return window['go']['main']['App']['InstallUpdate']();
+}
+
+export function ListRouteBackups() {
+  return window['go']['main']['App']['ListRouteBackups']();
 }
 
 export function LogUIError(arg1) {
@@ -76,6 +84,10 @@ export function RestartAsAdmin() {
 
 export function RestoreDefaultRoute() {
   return window['go']['main']['App']['RestoreDefaultRoute']();
+}
+
+export function RestoreRouteBackup(arg1, arg2) {
+  return window['go']['main']['App']['RestoreRouteBackup'](arg1, arg2);
 }
 
 export function SaveSettings(arg1) {

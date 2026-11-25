@@ -246,6 +246,245 @@ export namespace guiapp {
 
 export namespace iproute {
 	
+	export class RouteEntry {
+	    // Go type: time
+	    capturedAt?: any;
+	    destination: string;
+	    nextHop: string;
+	    interfaceIndex: number;
+	    interfaceAlias?: string;
+	    compartmentId?: number;
+	    interfaceGuid: string;
+	    addresses: string[];
+	    network: string;
+	    metric: number;
+	    store: string;
+	    protocol: string;
+	    publish: string;
+	    validTicks: string;
+	    preferredTicks: string;
+	    raw?: number[];
+	    nativeKey?: number[];
+	    bindings?: RouteEntry[];
+	    createdByRecovery?: RouteEntry;
+	    activeBefore?: RouteEntry;
+	    removeAfterRestore?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new RouteEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.capturedAt = this.convertValues(source["capturedAt"], null);
+	        this.destination = source["destination"];
+	        this.nextHop = source["nextHop"];
+	        this.interfaceIndex = source["interfaceIndex"];
+	        this.interfaceAlias = source["interfaceAlias"];
+	        this.compartmentId = source["compartmentId"];
+	        this.interfaceGuid = source["interfaceGuid"];
+	        this.addresses = source["addresses"];
+	        this.network = source["network"];
+	        this.metric = source["metric"];
+	        this.store = source["store"];
+	        this.protocol = source["protocol"];
+	        this.publish = source["publish"];
+	        this.validTicks = source["validTicks"];
+	        this.preferredTicks = source["preferredTicks"];
+	        this.raw = source["raw"];
+	        this.nativeKey = source["nativeKey"];
+	        this.bindings = this.convertValues(source["bindings"], RouteEntry);
+	        this.createdByRecovery = this.convertValues(source["createdByRecovery"], RouteEntry);
+	        this.activeBefore = this.convertValues(source["activeBefore"], RouteEntry);
+	        this.removeAfterRestore = source["removeAfterRestore"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RouteBackupRoute {
+	    saved: RouteEntry;
+	    current?: RouteEntry;
+	    state: string;
+	    reason?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RouteBackupRoute(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.saved = this.convertValues(source["saved"], RouteEntry);
+	        this.current = this.convertValues(source["current"], RouteEntry);
+	        this.state = source["state"];
+	        this.reason = source["reason"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RouteBackupSummary {
+	    id: string;
+	    // Go type: time
+	    savedAt: any;
+	    routeCount: number;
+	    ipv4Count: number;
+	    ipv6Count: number;
+	    interfaces: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new RouteBackupSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.savedAt = this.convertValues(source["savedAt"], null);
+	        this.routeCount = source["routeCount"];
+	        this.ipv4Count = source["ipv4Count"];
+	        this.ipv6Count = source["ipv6Count"];
+	        this.interfaces = source["interfaces"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RouteBackupDetail {
+	    summary: RouteBackupSummary;
+	    routes: RouteBackupRoute[];
+	
+	    static createFrom(source: any = {}) {
+	        return new RouteBackupDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.summary = this.convertValues(source["summary"], RouteBackupSummary);
+	        this.routes = this.convertValues(source["routes"], RouteBackupRoute);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RouteBackupHistory {
+	    records: RouteBackupSummary[];
+	    invalidLines: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RouteBackupHistory(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.records = this.convertValues(source["records"], RouteBackupSummary);
+	        this.invalidLines = source["invalidLines"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RouteBackupRestoreResult {
+	    restored: number;
+	    alreadyPresent: number;
+	    replaced: number;
+	    skipped: number;
+	    failed: number;
+	    failures: string[];
+	    complete: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new RouteBackupRestoreResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.restored = source["restored"];
+	        this.alreadyPresent = source["alreadyPresent"];
+	        this.replaced = source["replaced"];
+	        this.skipped = source["skipped"];
+	        this.failed = source["failed"];
+	        this.failures = source["failures"];
+	        this.complete = source["complete"];
+	    }
+	}
+	
+	
+	
 	export class RouteInfo {
 	    gateway: string;
 	    interface: string;

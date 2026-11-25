@@ -81,6 +81,18 @@ func (a *App) RestoreDefaultRoute() (*guiapp.RouteActionResult, error) {
 	return a.service.RestoreDefaultRoute()
 }
 
+func (a *App) ListRouteBackups() (*iproute.RouteBackupHistory, error) {
+	return a.service.ListRouteBackups()
+}
+
+func (a *App) GetRouteBackupDetail(id string) (*iproute.RouteBackupDetail, error) {
+	return a.service.GetRouteBackupDetail(id)
+}
+
+func (a *App) RestoreRouteBackup(id string, replaceConflicts bool) (*iproute.RouteBackupRestoreResult, error) {
+	return a.service.RestoreRouteBackup(id, replaceConflicts)
+}
+
 func (a *App) GetDefaultRouteInfo() (*iproute.RouteInfo, error) {
 	return a.service.GetDefaultRouteInfo()
 }

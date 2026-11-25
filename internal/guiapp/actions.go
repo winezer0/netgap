@@ -110,6 +110,32 @@ func (s *Service) noRoutesToRestore() *RouteActionResult {
 	return &RouteActionResult{Success: true, Noop: true, Message: message}
 }
 
+func (s *Service) ListRouteBackups() (*iproute.RouteBackupHistory, error) {
+	history, err := iproute.ListRouteBackups()
+	if err != nil {
+		return nil, err
+	}
+	return &history, nil
+}
+
+func (s *Service) GetRouteBackupDetail(id string) (*iproute.RouteBackupDetail, error) {
+	ctx, cancel := context.WithTimeout(s.operationContext(), time.Minute)
+	defer cancel()
+	return iproute.GetRouteBackupDetail(ctx, id)
+}
+
+func (s *Service) RestoreRouteBackup(id string, replaceConflicts bool) (*iproute.RouteBackupRestoreResult, error) {
+	ctx, cancel := context.WithTimeout(s.operationContext(), time.Minute)
+	defer cancel()
+	if !iproute.CheckAdminPermissionContext(ctx) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("admin permission required")
+	}
+	return iproute.RestoreRouteBackup(ctx, id, replaceConflicts)
+}
+
 func (s *Service) GetDefaultRouteInfo() (*iproute.RouteInfo, error) {
 	return iproute.GetDefaultRoute()
 }
