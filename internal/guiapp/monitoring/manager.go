@@ -212,6 +212,7 @@ func (m *Manager) run(run *monitorRun, cfg *config.Config) {
 	}
 
 	m.writeRunLog(run, "INFO", fmt.Sprintf("Monitoring started, interval=%ds, regions=%v", cfg.Interval, cfg.Regions))
+	m.backupRoutes(run)
 	if run.permissionLimited && m.removeRouteOnMatch.Load() {
 		m.writeRunLog(run, "WARN", permissionLimitedWarning)
 	}
@@ -242,6 +243,7 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 	if !m.isCurrent(run) {
 		return false
 	}
+	m.backupRoutes(run)
 	hadPending := false
 	if !m.removeRouteOnMatch.Load() {
 		if run.pending != nil {
@@ -369,6 +371,14 @@ func (m *Manager) checkOnce(run *monitorRun, cfg *config.Config) bool {
 		return false
 	}
 	return m.performRouteAction(run, result.ProtectionGuard)
+}
+
+func (m *Manager) backupRoutes(run *monitorRun) {
+	ctx, cancel := context.WithTimeout(run.ctx, monitorcore.DisconnectAttemptTimeout)
+	defer cancel()
+	if err := iproute.BackupDefaultRoutes(ctx); err != nil {
+		m.writeRunLog(run, "WARN", "Default-route snapshot backup failed: "+err.Error())
+	}
 }
 
 func (m *Manager) performRouteAction(run *monitorRun, validate func(context.Context) error) bool {

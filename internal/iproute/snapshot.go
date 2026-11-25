@@ -118,6 +118,124 @@ func EnsureProtectionSupported() error {
 
 func snapshotPath() string { return GetCacheFilePath() + ".json" }
 
+const routeBackupHistoryLimit = 100
+
+type routeBackupRecord struct {
+	Version int          `json:"version"`
+	SavedAt time.Time    `json:"savedAt"`
+	Routes  []RouteEntry `json:"routes"`
+}
+
+// BackupDefaultRoutes appends a snapshot only when the default-route set
+// changes. It never alters routes or the recovery snapshot used by restore.
+func BackupDefaultRoutes(ctx context.Context) error {
+	release, err := acquireRouteOperation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	file := historyPath()
+	unlock, err := lockSnapshotFile(file)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	routes, err := snapshotBackend.list(ctx)
+	if err != nil {
+		return fmt.Errorf("capture default-route backup: %w", err)
+	}
+	if len(routes) == 0 {
+		return nil
+	}
+	if err := snapshotBackend.validate(ctx, routes); err != nil {
+		return fmt.Errorf("validate default-route backup: %w", err)
+	}
+	for i := range routes {
+		routes[i].CapturedAt = time.Now().UTC()
+	}
+	content, err := os.ReadFile(file)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	var records []routeBackupRecord
+	if len(content) > 0 {
+		lines := bytes.Split(bytes.TrimSpace(content), []byte("\n"))
+		for _, line := range lines {
+			var record routeBackupRecord
+			if err := json.Unmarshal(line, &record); err != nil || record.Version != snapshotVersion || len(record.Routes) == 0 {
+				return errors.New("cannot preserve invalid route backup history")
+			}
+			records = append(records, record)
+		}
+	}
+	if len(records) > 0 && sameRouteSet(records[len(records)-1].Routes, routes) {
+		return nil
+	}
+	records = append(records, routeBackupRecord{Version: snapshotVersion, SavedAt: time.Now().UTC(), Routes: routes})
+	if len(records) > routeBackupHistoryLimit {
+		records = records[len(records)-routeBackupHistoryLimit:]
+	}
+	var output bytes.Buffer
+	encoder := json.NewEncoder(&output)
+	for _, record := range records {
+		if err := encoder.Encode(record); err != nil {
+			return err
+		}
+	}
+	return atomicSnapshotWrite(file, output.Bytes())
+}
+
+func historyPath() string {
+	return filepath.Join(filepath.Dir(GetCacheFilePath()), "iproute.history.jsonl")
+}
+
+func sameRouteSet(a, b []RouteEntry) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	used := make([]bool, len(b))
+	for _, route := range a {
+		found := false
+		for i, candidate := range b {
+			if !used[i] && sameRoute(route, candidate) {
+				used[i], found = true, true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+func atomicSnapshotWrite(file string, content []byte) error {
+	if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(file), ".route-snapshot-history-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if err := f.Chmod(0600); err != nil {
+		f.Close()
+		return err
+	}
+	if _, err := f.Write(content); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), file)
+}
+
 func saveSnapshot(file string, snapshot *routeSnapshot) error {
 	content, err := json.MarshalIndent(snapshot, "", "  ")
 	if err != nil {
@@ -459,6 +577,14 @@ func RestoreAllDefaultRoutes(ctx context.Context) error {
 		return err
 	}
 	defer unlock()
+	if _, err := os.Stat(snapshotPath()); errors.Is(err, os.ErrNotExist) {
+		if err := stageLatestRouteBackup(snapshotPath()); err != nil {
+			if errors.Is(err, ErrNoRecoverySnapshot) {
+				return ErrNoRecoverySnapshot
+			}
+			return fmt.Errorf("cannot stage latest route backup for recovery: %w", err)
+		}
+	}
 	if err := restoreAllDefaultRoutes(ctx, snapshotBackend, snapshotPath()); err != nil {
 		if errors.Is(err, ErrNoRecoverySnapshot) {
 			return ErrNoRecoverySnapshot
@@ -466,6 +592,31 @@ func RestoreAllDefaultRoutes(ctx context.Context) error {
 		return fmt.Errorf("restore failed; recovery snapshot path: %s (preserve remaining data and use the same execution identity/data directory): %w", snapshotPath(), err)
 	}
 	return nil
+}
+
+func stageLatestRouteBackup(file string) error {
+	history, err := os.ReadFile(historyPath())
+	if errors.Is(err, os.ErrNotExist) {
+		return ErrNoRecoverySnapshot
+	}
+	if err != nil {
+		return err
+	}
+	lines := bytes.Split(bytes.TrimSpace(history), []byte("\n"))
+	if len(lines) == 0 || len(lines[len(lines)-1]) == 0 {
+		return ErrNoRecoverySnapshot
+	}
+	var record routeBackupRecord
+	if err := json.Unmarshal(lines[len(lines)-1], &record); err != nil || record.Version != snapshotVersion || record.SavedAt.IsZero() || len(record.Routes) == 0 {
+		return errors.New("latest route backup is invalid")
+	}
+	snapshot := &routeSnapshot{Version: snapshotVersion, SavedAt: record.SavedAt, Routes: record.Routes}
+	if compatibility, ok := snapshotBackend.(snapshotCompatibility); ok {
+		if err := compatibility.validateSnapshot(snapshot); err != nil {
+			return err
+		}
+	}
+	return saveSnapshot(file, snapshot)
 }
 
 func restoreAllDefaultRoutes(ctx context.Context, backend routeBackend, file string) error {

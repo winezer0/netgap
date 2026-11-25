@@ -166,3 +166,76 @@ func TestSnapshotRetryPreservesEarlierNetwork(t *testing.T) {
 		t.Fatal("lost earlier recovery records")
 	}
 }
+
+func TestRouteBackupSkipsEmptyAndDeduplicatesUnchangedRoutes(t *testing.T) {
+	dir := t.TempDir()
+	oldDir, oldBackend := cacheDirOverride, snapshotBackend
+	defer func() { cacheDirOverride, snapshotBackend = oldDir, oldBackend }()
+	cacheDirOverride = dir
+	f := &fakeRouteBackend{}
+	snapshotBackend = f
+	ctx := context.Background()
+	if err := BackupDefaultRoutes(ctx); err != nil {
+		t.Fatal(err)
+	}
+	file := historyPath()
+	if _, err := os.Stat(file); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("empty routes created history", err)
+	}
+	f.rows = fakeRoutes()
+	if err := BackupDefaultRoutes(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := BackupDefaultRoutes(ctx); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := bytes.Count(content, []byte("\n")); got != 1 {
+		t.Fatalf("unchanged routes produced %d records", got)
+	}
+}
+
+func TestRouteBackupRetainsOnlyLatestHistory(t *testing.T) {
+	dir := t.TempDir()
+	oldDir, oldBackend := cacheDirOverride, snapshotBackend
+	defer func() { cacheDirOverride, snapshotBackend = oldDir, oldBackend }()
+	cacheDirOverride = dir
+	f := &fakeRouteBackend{rows: fakeRoutes()}
+	snapshotBackend = f
+	for i := 0; i < routeBackupHistoryLimit+3; i++ {
+		f.rows[0].Metric = uint32(i)
+		if err := BackupDefaultRoutes(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	content, err := os.ReadFile(historyPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := bytes.Count(content, []byte("\n")); got != routeBackupHistoryLimit {
+		t.Fatalf("history has %d records", got)
+	}
+}
+
+func TestLatestRouteBackupCanBeStagedForManualRecovery(t *testing.T) {
+	dir := t.TempDir()
+	oldDir, oldBackend := cacheDirOverride, snapshotBackend
+	defer func() { cacheDirOverride, snapshotBackend = oldDir, oldBackend }()
+	cacheDirOverride = dir
+	f := &fakeRouteBackend{rows: fakeRoutes()}
+	snapshotBackend = f
+	if err := BackupDefaultRoutes(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	file := snapshotPath()
+	if err := stageLatestRouteBackup(file); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := loadSnapshot(file)
+	if err != nil || len(snapshot.Routes) != len(fakeRoutes()) {
+		t.Fatalf("staged backup invalid: snapshot=%+v err=%v", snapshot, err)
+	}
+}

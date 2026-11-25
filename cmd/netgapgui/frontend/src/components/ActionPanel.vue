@@ -10,6 +10,7 @@ const props = defineProps({
 })
 
 const { addNotification } = useNotification()
+const confirmRemoveRoute = ref(false)
 
 const loadingStates = ref({
   removeRoute: false,
@@ -21,6 +22,7 @@ const loadingStates = ref({
 })
 
 const removeRoute = async () => {
+  confirmRemoveRoute.value = false
   if (loadingStates.value.removeRoute) return
   loadingStates.value.removeRoute = true
   try {
@@ -115,7 +117,7 @@ const stopMonitoring = async () => {
         class="primaryBtn action-btn" 
         :class="{ 'is-loading': loadingStates.removeRoute }"
         :disabled="loadingStates.removeRoute" 
-        @click="removeRoute"
+        @click="confirmRemoveRoute = true"
       >
         {{ translate('removeDefaultRoute') }}
       </button>
@@ -144,6 +146,16 @@ const stopMonitoring = async () => {
         {{ translate('queryProxyConfig') }}
       </button>
     </div>
+    <div v-if="confirmRemoveRoute" class="confirmBackdrop" role="presentation" @click.self="confirmRemoveRoute = false">
+      <section class="confirmDialog" role="alertdialog" aria-modal="true" :aria-labelledby="'remove-route-title'" :aria-describedby="'remove-route-warning'">
+        <h2 id="remove-route-title">{{ translate('removeRouteConfirmTitle') }}</h2>
+        <p id="remove-route-warning">{{ translate('removeRouteConfirmWarning') }}</p>
+        <div class="confirmActions">
+          <button class="secondaryBtn" type="button" @click="confirmRemoveRoute = false">{{ translate('cancel') }}</button>
+          <button class="dangerBtn" type="button" :disabled="loadingStates.removeRoute" @click="removeRoute">{{ translate('removeDefaultRoute') }}</button>
+        </div>
+      </section>
+    </div>
     <div class="buttonRow">
       <button 
         class="primaryBtn successBtn action-btn" 
@@ -166,6 +178,34 @@ const stopMonitoring = async () => {
 </template>
 
 <style scoped>
+.confirmBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgb(0 0 0 / 65%);
+}
+
+.confirmDialog {
+  width: min(420px, 100%);
+  padding: 20px;
+  border: 1px solid #405268;
+  border-radius: 10px;
+  background: #19202a;
+  color: #eff4fb;
+  box-shadow: 0 18px 48px rgb(0 0 0 / 48%);
+}
+
+.confirmDialog h2 { margin: 0 0 12px; font-size: 17px; }
+.confirmDialog p { line-height: 1.55; }
+.confirmActions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.confirmActions button { padding: 8px 14px; border: 0; border-radius: 6px; color: white; cursor: pointer; }
+.confirmActions .secondaryBtn { background: #354253; }
+.confirmActions .dangerBtn { background: #9b2737; }
+.confirmActions button:disabled { opacity: .6; cursor: not-allowed; }
+
 .action-btn {
   position: relative;
   overflow: hidden;

@@ -138,6 +138,7 @@ func StartMonitoring(ctx context.Context, cfg *config.Config, checker *Checker) 
 func runMonitoring(ctx context.Context, cfg *config.Config, checker *Checker, ticks <-chan time.Time) {
 	checker.health.Start(cfg.Interval)
 	defer checker.health.Stop()
+	backupRoutes(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -150,6 +151,7 @@ func runMonitoring(ctx context.Context, cfg *config.Config, checker *Checker, ti
 		if ctx.Err() != nil {
 			return
 		}
+		backupRoutes(ctx)
 		status, err, fetcherName := checker.CheckProxyStatus(ctx, cfg)
 		slogs.Infof("Monitor health: %s", checker.Health())
 		if ctx.Err() != nil {
@@ -175,6 +177,12 @@ func runMonitoring(ctx context.Context, cfg *config.Config, checker *Checker, ti
 		} else {
 			slogs.Infof("[接口: %s] 出口未命中监控地区", fetcherName)
 		}
+	}
+}
+
+func backupRoutes(ctx context.Context) {
+	if err := iproute.BackupDefaultRoutes(ctx); err != nil {
+		slogs.Warnf("Default-route snapshot backup failed: %v", err)
 	}
 }
 
