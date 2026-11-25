@@ -1,6 +1,7 @@
 package guiapp
 
 import (
+	"runtime"
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -67,10 +68,14 @@ func (t *TrayController) Start() {
 			return
 		}
 		t.rebuildMenuLocked()
-		t.tray.SetIcon(t.icon)
+		// Windows uses the executable's application icon selected by Wails.
+		if runtime.GOOS != "windows" {
+			t.tray.SetIcon(t.icon)
+		}
 		t.tray.SetTooltip(textsFor(t.service.Settings().Language).Tray.Tooltip)
 		t.tray.SetMenu(t.menuLocked())
-		t.tray.Run()
+		// SystemTrayManager.New already starts the native tray. Calling Run
+		// again creates another native icon and replaces its tracked handle.
 		t.service.MarkTrayReady()
 	})
 }

@@ -31,9 +31,6 @@ func main() {
 		service.ConfigureElevatedRestart(intent.ResumeMonitoring)
 	}
 	appIcon := appIconPNG
-	if runtime.GOOS == "windows" {
-		appIcon = windowsTrayIcon
-	}
 	app := NewApp(service, appIcon)
 	var singleInstance *application.SingleInstanceOptions
 	if runtime.GOOS == "windows" {

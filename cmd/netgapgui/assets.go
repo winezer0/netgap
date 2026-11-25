@@ -11,8 +11,3 @@ var frontendDist embed.FS
 //
 //go:embed build/appicon.png
 var appIconPNG []byte
-
-// windowsTrayIcon stores the Windows system tray icon.
-//
-//go:embed build/icon.ico
-var windowsTrayIcon []byte
