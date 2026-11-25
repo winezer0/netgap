@@ -28,7 +28,11 @@ func main() {
 	if intent != nil {
 		service.ConfigureElevatedRestart(intent.ResumeMonitoring)
 	}
-	app := NewApp(service, trayIcon)
+	appIcon := appIconPNG
+	if runtime.GOOS == "windows" {
+		appIcon = windowsTrayIcon
+	}
+	app := NewApp(service, appIcon)
 	if runtime.GOOS == "darwin" {
 		app.tray.Start()
 	}
@@ -45,7 +49,7 @@ func main() {
 	}
 	app.runtime = application.New(application.Options{
 		Name:           "netgapgui",
-		Icon:           trayIcon,
+		Icon:           appIcon,
 		SingleInstance: singleInstance,
 		Services:       []application.Service{application.NewService(app)},
 		Assets:         application.AssetOptions{Handler: application.AssetFileServerFS(frontendDist)},
@@ -56,6 +60,7 @@ func main() {
 		MinWidth: 600, MinHeight: 800, MaxWidth: 800, MaxHeight: 1200,
 		Frameless: true, Hidden: service.ShouldStartHidden(),
 		BackgroundColour: application.RGBA{Red: 18, Green: 22, Blue: 28, Alpha: 255},
+		Linux: application.LinuxWindow{Icon: appIconPNG},
 	})
 	service.SetRuntime(app.runtime, app.window)
 	if err := app.runtime.Run(); err != nil {
