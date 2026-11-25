@@ -85,7 +85,6 @@ jobs:
         working-directory: cmd/netgapgui
         env:
           VITE_APP_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.release.tag_name || github.ref_name }}
-        env:
           GOFLAGS: ${{ matrix.go_flags || '' }}
         run: node build.mjs -clean -m -platform "${{ matrix.platform }}"
 
