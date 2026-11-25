@@ -41,6 +41,13 @@ test('frontend checks and binding generation precede Wails v3 build', (t) => {
   assert.equal(f.calls.at(-1).options.env.GOARCH, 'amd64')
 })
 
+test('Windows builds hide the console while preserving configured Go flags', (t) => {
+  const f = fixture(t)
+  build({ ...f, args: ['-platform', 'windows/amd64'], env: { GOFLAGS: '-tags=dezip_full' } })
+  const wailsBuild = f.calls.find(({ command, args }) => command === 'wails3' && args[0] === 'build')
+  assert.equal(wailsBuild.options.env.GOFLAGS, '-tags=dezip_full -ldflags=-H=windowsgui')
+})
+
 test('Wails v3 build failures preserve their exit status', (t) => {
   const f = fixture(t, (command, args) => ({ status: command === 'wails3' && args[0] === 'build' ? 9 : 0 }))
   assert.throws(() => build({ ...f, args: [] }), (error) => error.exitCode === 9)

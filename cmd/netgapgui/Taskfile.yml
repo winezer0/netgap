@@ -25,7 +25,7 @@ tasks:
   windows:dev:build:
     cmds:
       - cmd: node -e "require('fs').mkdirSync('build/bin',{recursive:true})"
-      - cmd: go build -o "build/bin/netgapgui.exe" .
+      - cmd: go build -ldflags=-H=windowsgui -o "build/bin/netgapgui.exe" .
         env:
           CGO_ENABLED: '1'
   linux:dev:build:
@@ -56,7 +56,7 @@ tasks:
       - wails3 update build-assets -name netgapgui -binaryname netgapgui -config build/config.yml -dir build/generated -productcompany NetGap -productname NetGapGUI -productidentifier io.netgap.netgapgui -productversion {{.PRODUCT_VERSION | default "0.2.10"}}
       - wails3 generate icons -input build/appicon.png -windowsfilename build/generated/windows/icon.ico -macfilename build/generated/darwin/icons.icns
       - wails3 generate syso -arch {{.ARCH}} -icon build/generated/windows/icon.ico -manifest build/generated/windows/wails.exe.manifest -info build/generated/windows/info.json -out wails_windows_{{.ARCH}}.syso
-      - cmd: go build {{if .EXTRA_TAGS}}-tags {{.EXTRA_TAGS}}{{end}} -o "{{.OUTPUT}}" .
+      - cmd: go build {{if .EXTRA_TAGS}}-tags {{.EXTRA_TAGS}}{{end}} -ldflags=-H=windowsgui -o "{{.OUTPUT}}" .
         env:
           GOOS: windows
           GOARCH: '{{.GOARCH | default ARCH}}'

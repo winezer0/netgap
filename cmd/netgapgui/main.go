@@ -14,7 +14,9 @@ import (
 func main() {
 	intent, err := elevation.Prepare(os.Args[1:])
 	if err != nil {
-		elevation.ShowLaunchError(err)
+		if !elevation.IsRestartChild(os.Args[1:]) {
+			elevation.ShowLaunchError(err)
+		}
 		return
 	}
 	service, err := newService()

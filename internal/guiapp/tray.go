@@ -50,7 +50,9 @@ func NewTrayController(service *Service, icon []byte) *TrayController {
 
 func (t *TrayController) SetSystemTray(tray *application.SystemTray) {
 	t.mu.Lock()
-	t.tray = tray
+	if t.tray == nil {
+		t.tray = tray
+	}
 	t.mu.Unlock()
 }
 

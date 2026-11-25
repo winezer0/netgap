@@ -4,13 +4,15 @@ import (
 	"context"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"netgap/internal/guiapp"
+	"sync"
 )
 
 type App struct {
-	service *guiapp.Service
-	tray    *guiapp.TrayController
-	runtime *application.App
-	window  *application.WebviewWindow
+	service           *guiapp.Service
+	tray              *guiapp.TrayController
+	runtime           *application.App
+	window            *application.WebviewWindow
+	frontendReadyOnce sync.Once
 }
 
 func NewApp(service *guiapp.Service, icon []byte) *App {
@@ -23,11 +25,13 @@ func (a *App) ServiceStartup(ctx context.Context, _ application.ServiceOptions) 
 }
 
 func (a *App) FrontendReady() {
-	a.service.EmitState()
-	a.service.EmitLogs()
-	a.tray.SetSystemTray(a.runtime.SystemTray.New())
-	a.tray.Start()
-	a.service.MarkFrontendReady()
+	a.frontendReadyOnce.Do(func() {
+		a.service.EmitState()
+		a.service.EmitLogs()
+		a.tray.SetSystemTray(a.runtime.SystemTray.New())
+		a.tray.Start()
+		a.service.MarkFrontendReady()
+	})
 }
 
 func (a *App) Shutdown() { a.tray.Stop(); a.service.Shutdown() }

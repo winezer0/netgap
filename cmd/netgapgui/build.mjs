@@ -68,6 +68,11 @@ export function build({ projectDir = defaultProjectDir, args = process.argv.slic
   const buildEnv = { ...env, VITE_APP_VERSION: appVersion }
   if (goos) buildEnv.GOOS = goos
   if (goarch && goarch !== 'universal') buildEnv.GOARCH = goarch
+  if (goos === 'windows') {
+    const windowsGUIFlag = '-ldflags=-H=windowsgui'
+    const goFlags = buildEnv.GOFLAGS?.trim()
+    buildEnv.GOFLAGS = goFlags ? `${goFlags} ${windowsGUIFlag}` : windowsGUIFlag
+  }
 
   if (goos === 'darwin' && goarch === 'universal') {
     for (const arch of ['amd64', 'arm64']) {

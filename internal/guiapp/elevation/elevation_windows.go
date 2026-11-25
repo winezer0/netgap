@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -18,6 +19,16 @@ import (
 
 const parentPrefix = "--netgap-restart-parent="
 const statePrefix = "--netgap-restart-state="
+const handoffTimeout = 15 * time.Second
+
+func IsRestartChild(args []string) bool {
+	for _, arg := range args {
+		if strings.HasPrefix(arg, parentPrefix) || strings.HasPrefix(arg, statePrefix) {
+			return true
+		}
+	}
+	return false
+}
 
 type handoffState struct {
 	ParentPID        uint32 `json:"parentPid"`
@@ -63,6 +74,8 @@ func Restart(monitoringState func() bool) error {
 		_ = stateFile.Close()
 		if !handoffComplete {
 			_ = os.Remove(stateFile.Name())
+			_ = os.Remove(stateFile.Name() + ".ready")
+			_ = os.Remove(stateFile.Name() + ".ack")
 		}
 	}()
 	arguments := parentPrefix + strconv.Itoa(os.Getpid())
@@ -128,6 +141,14 @@ func Restart(monitoringState func() bool) error {
 		_ = windows.TerminateProcess(info.Process, 1)
 		return fmt.Errorf("close restart handoff: %w", err)
 	}
+	if err := os.WriteFile(stateFile.Name()+".ready", []byte("ready"), 0o600); err != nil {
+		_ = windows.TerminateProcess(info.Process, 1)
+		return fmt.Errorf("signal restart handoff ready: %w", err)
+	}
+	if err := waitForHandoff(info.Process, stateFile.Name()+".ack", handoffTimeout); err != nil {
+		_ = windows.TerminateProcess(info.Process, 1)
+		return err
+	}
 	handoffComplete = true
 	return nil
 }
@@ -166,8 +187,12 @@ func Prepare(args []string) (*LaunchIntent, error) {
 	if !validStatePath(statePath) {
 		return nil, errors.New("invalid restart handoff path")
 	}
-	defer func() { _ = os.Remove(statePath) }()
-	if err := waitForParent(uint32(parent)); err != nil {
+	defer func() {
+		_ = os.Remove(statePath)
+		_ = os.Remove(statePath + ".ready")
+		_ = os.Remove(statePath + ".ack")
+	}()
+	if err := waitForMarker(statePath+".ready", handoffTimeout); err != nil {
 		return nil, err
 	}
 	file, err := os.Open(statePath)
@@ -183,6 +208,25 @@ func Prepare(args []string) (*LaunchIntent, error) {
 	}
 	if state.ParentPID != uint32(parent) {
 		return nil, errors.New("restart handoff parent mismatch")
+	}
+	parentHandle, err := openRestartParent(uint32(parent))
+	if err != nil {
+		return nil, err
+	}
+	if parentHandle != 0 {
+		defer windows.CloseHandle(parentHandle)
+	}
+	if err := os.WriteFile(statePath+".ack", []byte("ready"), 0o600); err != nil {
+		return nil, fmt.Errorf("acknowledge restart handoff: %w", err)
+	}
+	if parentHandle != 0 {
+		wait, err := windows.WaitForSingleObject(parentHandle, 60000)
+		if err != nil {
+			return nil, err
+		}
+		if wait != windows.WAIT_OBJECT_0 {
+			return nil, errors.New("previous application did not exit within 60 seconds")
+		}
 	}
 	return &LaunchIntent{ResumeMonitoring: state.ResumeMonitoring}, nil
 }
@@ -208,35 +252,63 @@ func validStatePath(path string) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
-func waitForParent(pid uint32) error {
+func openRestartParent(pid uint32) (windows.Handle, error) {
 	handle, err := windows.OpenProcess(windows.SYNCHRONIZE|windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
-		return nil
-	} // Parent has already exited.
-	if err != nil {
-		return fmt.Errorf("open restart parent: %w", err)
+		return 0, nil // Parent has already exited.
 	}
-	defer windows.CloseHandle(handle)
+	if err != nil {
+		return 0, fmt.Errorf("open restart parent: %w", err)
+	}
 	var name [32768]uint16
 	size := uint32(len(name))
 	if err := windows.QueryFullProcessImageName(handle, 0, &name[0], &size); err != nil {
-		return err
+		_ = windows.CloseHandle(handle)
+		return 0, err
 	}
 	executable, err := os.Executable()
 	if err != nil {
-		return err
+		_ = windows.CloseHandle(handle)
+		return 0, err
 	}
 	if !strings.EqualFold(windows.UTF16ToString(name[:size]), executable) {
-		return errors.New("restart parent is not the same executable")
+		_ = windows.CloseHandle(handle)
+		return 0, errors.New("restart parent is not the same executable")
 	}
-	wait, err := windows.WaitForSingleObject(handle, 60000)
-	if err != nil {
-		return err
+	return handle, nil
+}
+
+func waitForMarker(path string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("read restart handoff marker: %w", err)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
-	if wait != windows.WAIT_OBJECT_0 {
-		return errors.New("previous application did not exit within 60 seconds")
+	return errors.New("timed out waiting for restart handoff marker")
+}
+
+func waitForHandoff(process windows.Handle, ackPath string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		wait, err := windows.WaitForSingleObject(process, 0)
+		if err != nil {
+			return fmt.Errorf("wait for administrator process: %w", err)
+		}
+		if wait != uint32(windows.WAIT_TIMEOUT) {
+			return errors.New("administrator process exited before restart handoff")
+		}
+		if _, err := os.Stat(ackPath); err == nil {
+			return nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("read restart handoff acknowledgement: %w", err)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
-	return nil
+	return errors.New("administrator process did not acknowledge restart handoff")
 }
 
 func ShowLaunchError(err error) {
