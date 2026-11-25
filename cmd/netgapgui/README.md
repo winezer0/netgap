@@ -29,7 +29,7 @@ macOS 主机需要 Apple Command Line Tools、Wails、Node.js 和 CGO：
 
 ```sh
 cd cmd/netgapgui
-CGO_ENABLED=1 node build.mjs -platform darwin/universal
+CGO_ENABLED=1 node build.mjs -platform darwin/arm64
 open build/bin/netgapgui.app
 ```
 

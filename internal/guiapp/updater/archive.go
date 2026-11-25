@@ -21,7 +21,7 @@ func extractPayload(ctx context.Context, archivePath, destination string) (strin
 	assetName := filepath.Base(archivePath)
 	mode := downloadunpack.ModeZip
 	switch assetName {
-	case "netgapgui-windows-amd64.zip", "netgapgui-macos-universal.zip":
+	case "netgapgui-windows-amd64.zip", "netgapgui-macos-universal.zip", "netgapgui-macos-arm64.zip":
 	case "netgapgui-linux-amd64.tar.gz":
 		mode = downloadunpack.ModeTar
 	default:

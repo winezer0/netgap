@@ -438,8 +438,8 @@ func assetNameForPlatform() (string, error) {
 			return "netgapgui-linux-amd64.tar.gz", nil
 		}
 	case "darwin":
-		if runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64" {
-			return "netgapgui-macos-universal.zip", nil
+		if runtime.GOARCH == "arm64" {
+			return "netgapgui-macos-arm64.zip", nil
 		}
 	}
 	return "", fmt.Errorf("automatic updates are not available for %s/%s", runtime.GOOS, runtime.GOARCH)
@@ -460,8 +460,8 @@ func assetPatternFor(goos, goarch string) (string, error) {
 			return "netgapgui-linux-amd64*.tar.gz", nil
 		}
 	case "darwin":
-		if goarch == "amd64" || goarch == "arm64" {
-			return "netgapgui-macos-universal*.zip", nil
+		if goarch == "arm64" {
+			return "netgapgui-macos-arm64*.zip", nil
 		}
 	}
 	return "", fmt.Errorf("automatic updates are not available for %s/%s", goos, goarch)

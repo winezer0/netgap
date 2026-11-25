@@ -34,8 +34,8 @@ jobs:
             asset: netgapgui-linux-amd64.tar.gz
             go_flags: -tags=gtk3,dezip_full
           - os: macos-latest
-            platform: darwin/universal
-            asset: netgapgui-macos-universal.zip
+            platform: darwin/arm64
+            asset: netgapgui-macos-arm64.zip
 
     steps:
       - uses: actions/checkout@v7
@@ -105,7 +105,7 @@ jobs:
       - name: Archive macOS build
         if: runner.os == 'macOS'
         working-directory: cmd/netgapgui
-        run: ditto -c -k --sequesterRsrc --keepParent build/bin/netgapgui.app netgapgui-macos-universal.zip
+        run: ditto -c -k --sequesterRsrc --keepParent build/bin/netgapgui.app netgapgui-macos-arm64.zip
 
       - uses: actions/upload-artifact@v7
         with:
@@ -127,7 +127,7 @@ jobs:
       - name: Generate release checksums
         run: |
           cd release-assets
-          sha256sum netgapgui-windows-amd64.zip netgapgui-linux-amd64.tar.gz netgapgui-macos-universal.zip > SHA256SUMS
+          sha256sum netgapgui-windows-amd64.zip netgapgui-linux-amd64.tar.gz netgapgui-macos-arm64.zip > SHA256SUMS
 
       - name: Create release if needed and upload builds
         env:
