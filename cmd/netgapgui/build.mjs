@@ -76,9 +76,10 @@ export function build({ projectDir = defaultProjectDir, args = process.argv.slic
 
   if (goos === 'darwin' && goarch === 'universal') {
     for (const arch of ['amd64', 'arm64']) {
-      runBuild('wails3', [...cliArgs, `GOOS=darwin`, `GOARCH=${arch}`, `OUTPUT=build/bin/netgapgui-${arch}`], { env: buildEnv })
+      runBuild('wails3', [...cliArgs, `GOOS=darwin`, `GOARCH=${arch}`, `OUTPUT=build/bin/netgapgui-${arch}`], { env: { ...buildEnv, GOARCH: arch } })
     }
     runBuild('lipo', ['-create', '-output', 'build/bin/netgapgui', 'build/bin/netgapgui-amd64', 'build/bin/netgapgui-arm64'])
+    runBuild('lipo', ['-verify_arch', 'x86_64', 'arm64', 'build/bin/netgapgui'])
   } else {
     runBuild('wails3', cliArgs, { env: buildEnv })
   }

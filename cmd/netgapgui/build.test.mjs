@@ -55,10 +55,13 @@ test('Wails v3 build failures preserve their exit status', (t) => {
 
 test('universal macOS build compiles both architectures then creates a universal binary', (t) => {
   const f = fixture(t)
-  build({ ...f, args: ['-platform', 'darwin/universal'], env: {} })
+  build({ ...f, args: ['-platform', 'darwin/universal'], env: { GOARCH: 'arm64' } })
   const wailsBuilds = f.calls.filter(({ command, args }) => command === 'wails3' && args[0] === 'build')
   assert.equal(wailsBuilds.length, 2)
   assert.ok(wailsBuilds[0].args.includes('GOARCH=amd64'))
   assert.ok(wailsBuilds[1].args.includes('GOARCH=arm64'))
+  assert.equal(wailsBuilds[0].options.env.GOARCH, 'amd64')
+  assert.equal(wailsBuilds[1].options.env.GOARCH, 'arm64')
+  assert.ok(f.calls.some(({ command, args }) => command === 'lipo' && args[0] === '-verify_arch'))
   assert.ok(f.calls.some(({ command }) => command === 'lipo'))
 })
