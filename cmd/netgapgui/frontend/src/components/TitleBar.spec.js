@@ -23,12 +23,12 @@ vi.mock('../services/backend', () => ({
 
 describe('TitleBar', () => {
   beforeEach(() => {
-    windowApi.Size.mockResolvedValue({ width: 640, height: 480 })
+    windowApi.Size.mockResolvedValue({ Width: 640, Height: 480 })
     windowApi.SetSize.mockResolvedValue(undefined)
-    windowApi.Position.mockResolvedValue({ x: 80, y: 90 })
+    windowApi.Position.mockResolvedValue({ X: 80, Y: 90 })
     windowApi.SetPosition.mockResolvedValue(undefined)
     windowApi.IsMaximised.mockResolvedValue(false)
-    screenApi.GetAll.mockResolvedValue([{ isCurrent: true, width: 1600, height: 900 }])
+    screenApi.GetAll.mockResolvedValue([{ IsPrimary: true, Size: { Width: 1600, Height: 900 }, WorkArea: { X: 0, Y: 0, Width: 1600, Height: 900 } }])
   })
 
   it('shows the build version beside the application name', () => {

@@ -20,8 +20,13 @@ defineEmits([
 ])
 
 let isMaximised = false
-let previousSize = { width: 500, height: 550 }
+let previousSize = { width: 600, height: 800 }
 let previousPosition = { x: 0, y: 0 }
+
+const readNumber = (object, upperKey, lowerKey, fallback = 0) => {
+  const value = object?.[upperKey] ?? object?.[lowerKey]
+  return Number.isFinite(Number(value)) ? Number(value) : fallback
+}
 
 const toggleMaximise = async () => {
   try {
@@ -35,21 +40,40 @@ const toggleMaximise = async () => {
     } else {
       // 保存当前状态
       const size = await Window.Size()
-      previousSize = { width: size.width, height: size.height }
-      previousPosition = await Window.Position()
+      const currentWidth = readNumber(size, 'Width', 'width')
+      const currentHeight = readNumber(size, 'Height', 'height')
+      previousSize = {
+        width: currentWidth > 0 ? currentWidth : 600,
+        height: currentHeight > 0 ? currentHeight : 800,
+      }
+      const position = await Window.Position()
+      previousPosition = {
+        x: readNumber(position, 'X', 'x'),
+        y: readNumber(position, 'Y', 'y'),
+      }
       
       // 获取当前屏幕信息
       const screens = await Screens.GetAll()
-      const currentScreen = screens.find(s => s.isCurrent) || screens[0]
+      const currentScreen = screens.find(s => s.IsCurrent ?? s.isCurrent)
+        || screens.find(s => s.IsPrimary ?? s.isPrimary)
+        || screens[0]
       
       if (currentScreen) {
         // 计算窗口大小（屏幕的80%）
-        const targetWidth = Math.min(1200, Math.floor(currentScreen.width * 0.8))
-        const targetHeight = Math.min(900, Math.floor(currentScreen.height * 0.8))
+        const area = currentScreen.WorkArea ?? currentScreen.workArea ?? currentScreen.Bounds ?? currentScreen.bounds
+        const screenSize = currentScreen.Size ?? currentScreen.size
+        const screenWidth = readNumber(area, 'Width', 'width', readNumber(screenSize, 'Width', 'width', readNumber(currentScreen, 'Width', 'width')))
+        const screenHeight = readNumber(area, 'Height', 'height', readNumber(screenSize, 'Height', 'height', readNumber(currentScreen, 'Height', 'height')))
+        if (screenWidth <= 0 || screenHeight <= 0) return
+
+        const targetWidth = Math.max(600, Math.min(1200, Math.floor(screenWidth * 0.8)))
+        const targetHeight = Math.min(900, Math.floor(screenHeight * 0.8))
         
         // 计算居中位置
-        const centerX = Math.floor((currentScreen.width - targetWidth) / 2)
-        const centerY = Math.floor((currentScreen.height - targetHeight) / 2)
+        const originX = readNumber(area, 'X', 'x')
+        const originY = readNumber(area, 'Y', 'y')
+        const centerX = originX + Math.floor((screenWidth - targetWidth) / 2)
+        const centerY = originY + Math.floor((screenHeight - targetHeight) / 2)
         
         // 设置窗口大小和居中位置
         await Window.SetSize(targetWidth, targetHeight)
