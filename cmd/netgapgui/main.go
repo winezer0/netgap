@@ -6,16 +6,11 @@ import (
 	"runtime"
 	"slices"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"netgap/internal/guiapp"
 	"netgap/internal/guiapp/elevation"
-
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	"github.com/wailsapp/wails/v2/pkg/options/windows"
 )
 
-// main 启动基于 Wails v2 的图形界面程序。
 func main() {
 	intent, err := elevation.Prepare(os.Args[1:])
 	if err != nil {
@@ -35,55 +30,37 @@ func main() {
 	}
 	app := NewApp(service, trayIcon)
 	if runtime.GOOS == "darwin" {
-		// go-systray's nativeStart creates AppKit windows and must run on the
-		// locked main OS thread, not from Wails' DomReady callback goroutine.
 		app.tray.Start()
 	}
-	var instanceLock *options.SingleInstanceLock
+	var singleInstance *application.SingleInstanceOptions
 	if runtime.GOOS == "windows" {
-		instanceLock = &options.SingleInstanceLock{
-			UniqueId: "netgapgui-current-user-instance",
-			OnSecondInstanceLaunch: func(data options.SecondInstanceData) {
+		singleInstance = &application.SingleInstanceOptions{
+			UniqueID: "netgapgui-current-user-instance",
+			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
 				if !slices.Contains(data.Args, "--autostart") {
 					service.ShowWindow()
 				}
 			},
 		}
 	}
-
-	err = wails.Run(&options.App{
-		Title:              "netgapgui",
-		SingleInstanceLock: instanceLock,
-		Width:              600,
-		Height:             800,
-		MinWidth:           600,
-		MinHeight:          800,
-		MaxWidth:           800,
-		MaxHeight:          1200,
-		DisableResize:      false,
-		Frameless:          true,
-		StartHidden:        service.ShouldStartHidden(),
-		HideWindowOnClose:  false,
-		AssetServer: &assetserver.Options{
-			Assets: frontendDist,
-		},
-		BackgroundColour: options.NewRGBA(18, 22, 28, 255),
-		OnStartup:        app.Startup,
-		OnDomReady:       app.DomReady,
-		OnShutdown:       app.Shutdown,
-		OnBeforeClose:    app.BeforeClose,
-		Bind:             []interface{}{app},
-		Windows: &windows.Options{
-			DisableFramelessWindowDecorations: false,
-			DisableWindowIcon:                 true,
-		},
+	app.runtime = application.New(application.Options{
+		Name:           "netgapgui",
+		Icon:           trayIcon,
+		SingleInstance: singleInstance,
+		Services:       []application.Service{application.NewService(app)},
+		Assets:         application.AssetOptions{Handler: application.AssetFileServerFS(frontendDist)},
+		OnShutdown:     app.Shutdown,
 	})
-	if err != nil {
+	app.window = app.runtime.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name: "main", Title: "netgapgui", Width: 600, Height: 800,
+		MinWidth: 600, MinHeight: 800, MaxWidth: 800, MaxHeight: 1200,
+		Frameless: true, Hidden: service.ShouldStartHidden(),
+		BackgroundColour: application.RGBA{Red: 18, Green: 22, Blue: 28, Alpha: 255},
+	})
+	service.SetRuntime(app.runtime, app.window)
+	if err := app.runtime.Run(); err != nil {
 		fmt.Printf("error: %v\n", err)
 	}
 }
 
-// newService 创建 GUI 服务对象。
-func newService() (*guiapp.Service, error) {
-	return guiapp.NewService()
-}
+func newService() (*guiapp.Service, error) { return guiapp.NewService() }

@@ -1,14 +1,7 @@
 <script setup>
 import appIcon from '../assets/images/title-icon.png'
 import AdminRestartButton from './AdminRestartButton.vue'
-import {
-  WindowGetSize,
-  WindowSetSize,
-  WindowGetPosition,
-  WindowSetPosition,
-  WindowIsMaximised,
-  ScreenGetAll,
-} from '../../wailsjs/runtime/runtime'
+import { Window, Screens } from '@wailsio/runtime'
 
 const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
 
@@ -27,25 +20,26 @@ defineEmits([
 ])
 
 let isMaximised = false
-let previousSize = { w: 500, h: 550 }
+let previousSize = { width: 500, height: 550 }
 let previousPosition = { x: 0, y: 0 }
 
 const toggleMaximise = async () => {
   try {
-    const maximised = isMaximised || await WindowIsMaximised()
+    const maximised = isMaximised || await Window.IsMaximised()
     
     if (maximised) {
       // 还原窗口
-      await WindowSetSize(previousSize.w, previousSize.h)
-      await WindowSetPosition(previousPosition.x, previousPosition.y)
+      await Window.SetSize(previousSize.width, previousSize.height)
+      await Window.SetPosition(previousPosition.x, previousPosition.y)
       isMaximised = false
     } else {
       // 保存当前状态
-      previousSize = await WindowGetSize()
-      previousPosition = await WindowGetPosition()
+      const size = await Window.Size()
+      previousSize = { width: size.width, height: size.height }
+      previousPosition = await Window.Position()
       
       // 获取当前屏幕信息
-      const screens = await ScreenGetAll()
+      const screens = await Screens.GetAll()
       const currentScreen = screens.find(s => s.isCurrent) || screens[0]
       
       if (currentScreen) {
@@ -58,8 +52,8 @@ const toggleMaximise = async () => {
         const centerY = Math.floor((currentScreen.height - targetHeight) / 2)
         
         // 设置窗口大小和居中位置
-        await WindowSetSize(targetWidth, targetHeight)
-        await WindowSetPosition(centerX, centerY)
+        await Window.SetSize(targetWidth, targetHeight)
+        await Window.SetPosition(centerX, centerY)
       }
       
       isMaximised = true

@@ -4,7 +4,7 @@ import pluginVue from 'eslint-plugin-vue'
 
 export default [
   {
-    ignores: ['dist/**', 'wailsjs/**'],
+    ignores: ['dist/**', 'src/bindings/**'],
   },
   eslint.configs.recommended,
   ...pluginVue.configs['flat/essential'],

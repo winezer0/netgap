@@ -10,6 +10,7 @@ import (
 
 	slogs "github.com/winezer0/slogs"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"netgap/internal/guiapp/configstore"
 	"netgap/internal/guiapp/logbuffer"
 	"netgap/internal/guiapp/monitoring"
@@ -31,6 +32,8 @@ const (
 // Service 表示 GUI 应用服务。
 type Service struct {
 	ctx               context.Context
+	app               *application.App
+	window            application.Window
 	store             *configstore.Store
 	logs              *logbuffer.Buffer
 	monitor           *monitoring.Manager
@@ -106,6 +109,11 @@ func NewService() (*Service, error) {
 	service.monitor.SetHealthListener(service.emitHealth)
 	service.monitor.SetMatchListener(service.observeMatch)
 	return service, nil
+}
+
+// SetRuntime attaches Wails v3 managers after the application and main window exist.
+func (s *Service) SetRuntime(app *application.App, window application.Window) {
+	s.app, s.window = app, window
 }
 
 // Startup 记录 Wails 上下文并初始化日志。

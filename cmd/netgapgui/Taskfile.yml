@@ -1,0 +1,85 @@
+version: '3'
+
+vars:
+  OUTPUT_DIR: build/bin
+  EXTRA_TAGS: '{{.EXTRA_TAGS | default ""}}'
+
+tasks:
+  build:
+    cmds:
+      - task: '{{.GOOS}}:build'
+  run:
+    cmds:
+      - task: '{{OS}}:run'
+  dev:frontend:
+    dir: frontend
+    cmds:
+      - npm run dev -- --host localhost --port {{.WAILS_VITE_PORT | default 9245}}
+  dev:install:
+    dir: frontend
+    cmds:
+      - npm ci
+  dev:build:
+    cmds:
+      - task: '{{OS}}:dev:build'
+  windows:dev:build:
+    cmds:
+      - cmd: node -e "require('fs').mkdirSync('build/bin',{recursive:true})"
+      - cmd: go build -o "build/bin/netgapgui.exe" .
+        env:
+          CGO_ENABLED: '1'
+  linux:dev:build:
+    cmds:
+      - cmd: node -e "require('fs').mkdirSync('build/bin',{recursive:true})"
+      - cmd: go build -o "build/bin/netgapgui" .
+        env:
+          CGO_ENABLED: '1'
+  darwin:dev:build:
+    cmds:
+      - cmd: node -e "require('fs').mkdirSync('build/bin',{recursive:true})"
+      - cmd: go build -o "build/bin/netgapgui" .
+        env:
+          CGO_ENABLED: '1'
+  windows:run:
+    cmds:
+      - build/bin/netgapgui.exe
+  linux:run:
+    cmds:
+      - build/bin/netgapgui
+  darwin:run:
+    cmds:
+      - build/bin/netgapgui
+  windows:build:
+    vars:
+      OUTPUT: '{{.OUTPUT | default "build/bin/netgapgui.exe"}}'
+    cmds:
+      - wails3 update build-assets -name netgapgui -binaryname netgapgui -config build/config.yml -dir build/generated -productcompany NetGap -productname NetGapGUI -productidentifier io.netgap.netgapgui -productversion {{.PRODUCT_VERSION | default "0.2.10"}}
+      - wails3 generate icons -input build/appicon.png -windowsfilename build/generated/windows/icon.ico -macfilename build/generated/darwin/icons.icns
+      - wails3 generate syso -arch {{.ARCH}} -icon build/generated/windows/icon.ico -manifest build/generated/windows/wails.exe.manifest -info build/generated/windows/info.json -out wails_windows_{{.ARCH}}.syso
+      - cmd: go build {{if .EXTRA_TAGS}}-tags {{.EXTRA_TAGS}}{{end}} -o "{{.OUTPUT}}" .
+        env:
+          GOOS: windows
+          GOARCH: '{{.GOARCH | default ARCH}}'
+          CGO_ENABLED: '1'
+      - cmd: powershell Remove-Item wails_windows_*.syso
+        platforms: [windows]
+      - cmd: rm -f wails_windows_*.syso
+        platforms: [linux, darwin]
+  linux:build:
+    vars:
+      OUTPUT: '{{.OUTPUT | default "build/bin/netgapgui"}}'
+    cmds:
+      - cmd: go build {{if .EXTRA_TAGS}}-tags {{.EXTRA_TAGS}}{{end}} -o "{{.OUTPUT}}" .
+        env:
+          GOOS: linux
+          GOARCH: '{{.GOARCH | default ARCH}}'
+          CGO_ENABLED: '1'
+  darwin:build:
+    vars:
+      OUTPUT: '{{.OUTPUT | default "build/bin/netgapgui"}}'
+    cmds:
+      - cmd: go build {{if .EXTRA_TAGS}}-tags {{.EXTRA_TAGS}}{{end}} -o "{{.OUTPUT}}" .
+        env:
+          GOOS: darwin
+          GOARCH: '{{.GOARCH | default ARCH}}'
+          CGO_ENABLED: '1'

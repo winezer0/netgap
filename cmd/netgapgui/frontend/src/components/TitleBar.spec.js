@@ -3,28 +3,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import TitleBar from './TitleBar.vue'
 
 const {
-  WindowGetSize,
-  WindowSetSize,
-  WindowGetPosition,
-  WindowSetPosition,
-  WindowIsMaximised,
-  ScreenGetAll,
+  windowApi,
+  screenApi,
 } = vi.hoisted(() => ({
-  WindowGetSize: vi.fn(),
-  WindowSetSize: vi.fn(),
-  WindowGetPosition: vi.fn(),
-  WindowSetPosition: vi.fn(),
-  WindowIsMaximised: vi.fn(),
-  ScreenGetAll: vi.fn(),
+  windowApi: {
+    Size: vi.fn(), SetSize: vi.fn(), Position: vi.fn(), SetPosition: vi.fn(), IsMaximised: vi.fn(),
+  },
+  screenApi: { GetAll: vi.fn() },
 }))
 
-vi.mock('../../wailsjs/runtime/runtime', () => ({
-  WindowGetSize,
-  WindowSetSize,
-  WindowGetPosition,
-  WindowSetPosition,
-  WindowIsMaximised,
-  ScreenGetAll,
+vi.mock('@wailsio/runtime', () => ({
+  Window: windowApi,
+  Screens: screenApi,
 }))
 
 vi.mock('../services/backend', () => ({
@@ -33,12 +23,12 @@ vi.mock('../services/backend', () => ({
 
 describe('TitleBar', () => {
   beforeEach(() => {
-    WindowGetSize.mockResolvedValue({ w: 640, h: 480 })
-    WindowSetSize.mockResolvedValue(undefined)
-    WindowGetPosition.mockResolvedValue({ x: 80, y: 90 })
-    WindowSetPosition.mockResolvedValue(undefined)
-    WindowIsMaximised.mockResolvedValue(false)
-    ScreenGetAll.mockResolvedValue([{ isCurrent: true, width: 1600, height: 900 }])
+    windowApi.Size.mockResolvedValue({ width: 640, height: 480 })
+    windowApi.SetSize.mockResolvedValue(undefined)
+    windowApi.Position.mockResolvedValue({ x: 80, y: 90 })
+    windowApi.SetPosition.mockResolvedValue(undefined)
+    windowApi.IsMaximised.mockResolvedValue(false)
+    screenApi.GetAll.mockResolvedValue([{ isCurrent: true, width: 1600, height: 900 }])
   })
 
   it('shows the build version beside the application name', () => {
@@ -65,12 +55,12 @@ describe('TitleBar', () => {
 
     await maximize.trigger('click')
     await flushPromises()
-    expect(WindowSetSize).toHaveBeenLastCalledWith(1200, 720)
-    expect(WindowSetPosition).toHaveBeenLastCalledWith(200, 90)
+    expect(windowApi.SetSize).toHaveBeenLastCalledWith(1200, 720)
+    expect(windowApi.SetPosition).toHaveBeenLastCalledWith(200, 90)
 
     await maximize.trigger('click')
     await flushPromises()
-    expect(WindowSetSize).toHaveBeenLastCalledWith(640, 480)
-    expect(WindowSetPosition).toHaveBeenLastCalledWith(80, 90)
+    expect(windowApi.SetSize).toHaveBeenLastCalledWith(640, 480)
+    expect(windowApi.SetPosition).toHaveBeenLastCalledWith(80, 90)
   })
 })

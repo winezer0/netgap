@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"netgap/internal/guiapp/monitoring"
 	"netgap/internal/monitor"
 )
@@ -234,11 +234,11 @@ func (s *Service) alertSnapshot() (*Alert, bool, uint64) {
 }
 
 func (s *Service) emitAlertState() {
-	if s.ctx == nil || s.closing.Load() {
+	if s.app == nil || s.closing.Load() {
 		return
 	}
 	alert, unread, revision := s.alertSnapshot()
-	runtime.EventsEmit(s.ctx, eventAlertStateName, map[string]any{"latestAlert": alert, "alertUnread": unread, "alertRevision": revision})
+	s.app.Event.Emit(eventAlertStateName, map[string]any{"latestAlert": alert, "alertUnread": unread, "alertRevision": revision})
 }
 
 // SetWindowForeground records WebView focus/visibility changes. Focus changes
@@ -257,7 +257,7 @@ func (s *Service) SetWindowForeground(foreground bool, revision uint64) {
 // ShowLastAlert is an explicit user action, including when automatic popups
 // are disabled. Preserve the original occurrence time and mark it as history.
 func (s *Service) ShowLastAlert() {
-	if s.ctx == nil || s.ctx.Err() != nil || s.closing.Load() || !s.lastAlertDialogOpen.CompareAndSwap(false, true) {
+	if s.app == nil || s.ctx == nil || s.ctx.Err() != nil || s.closing.Load() || !s.lastAlertDialogOpen.CompareAndSwap(false, true) {
 		return
 	}
 	defer s.lastAlertDialogOpen.Store(false)
@@ -265,20 +265,15 @@ func (s *Service) ShowLastAlert() {
 	options, eventID := s.lastAlertDialogOptions()
 	// A native dialog stays visible until dismissed and does not depend on
 	// WebView event subscription timing or the automatic popup setting.
-	if _, err := runtime.MessageDialog(s.ctx, options); err != nil {
-		s.writeLog("WARN", "Failed to show latest alert; record retained: "+err.Error())
-		return
-	}
+	s.app.Dialog.Info().SetTitle(options.Title).SetMessage(options.Message).AttachToWindow(s.window).Show()
 	if eventID != 0 {
 		s.markAlertDelivered(eventID)
 	}
 }
 
-func (s *Service) lastAlertDialogOptions() (runtime.MessageDialogOptions, uint64) {
+func (s *Service) lastAlertDialogOptions() (application.MessageDialogOptions, uint64) {
 	texts := textsFor(s.Settings().Language)
-	options := runtime.MessageDialogOptions{
-		Type: runtime.InfoDialog, Title: texts.LatestAlertTitle, Message: texts.NoRecentAlert,
-	}
+	options := application.MessageDialogOptions{Title: texts.LatestAlertTitle, Message: texts.NoRecentAlert}
 	alert, _, _ := s.alertSnapshot()
 	if alert == nil {
 		return options, 0
