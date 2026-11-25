@@ -3,7 +3,6 @@ module netgap
 go 1.26.0
 
 require (
-	github.com/cardinalby/go-systray v1.0.2
 	github.com/gen2brain/beeep v0.11.3
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/wailsapp/wails/v3 v3.0.0

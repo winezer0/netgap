@@ -3,8 +3,23 @@ package guiapp
 import (
 	"sync"
 
-	"github.com/cardinalby/go-systray"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
+
+// TrayController connects the system tray menu to GUI service actions.
+type TrayController struct {
+	service    *Service
+	icon       []byte
+	tray       *application.SystemTray
+	menu       *application.Menu
+	items      trayMenuItems
+	mu         sync.Mutex
+	startOnce  sync.Once
+	stopOnce   sync.Once
+	start      func()
+	end        func()
+	setTooltip func(string)
+}
 
 type trayMenuItem interface {
 	SetTitle(string)
@@ -15,41 +30,67 @@ type trayMenuItems struct {
 	openWindow, latestAlert, removeRoute, restoreRoute, startMonitoring, stopMonitoring, quit trayMenuItem
 }
 
-// TrayController 表示系统托盘控制器。
-type TrayController struct {
-	service    *Service
-	icon       []byte
-	start      func()
-	end        func()
-	startOnce  sync.Once
-	stopOnce   sync.Once
-	menuMu     sync.Mutex
-	items      trayMenuItems
-	setTooltip func(string)
-}
+type wailsTrayMenuItem struct{ item *application.MenuItem }
 
-// NewTrayController 创建系统托盘控制器。
+func (i wailsTrayMenuItem) SetTitle(title string) { i.item.SetLabel(title) }
+func (wailsTrayMenuItem) SetTooltip(string)       {}
+
 func NewTrayController(service *Service, icon []byte) *TrayController {
-	controller := &TrayController{
-		service:    service,
-		icon:       icon,
-		setTooltip: systray.SetTooltip,
+	controller := &TrayController{service: service, icon: icon}
+	controller.setTooltip = func(value string) {
+		if controller.tray != nil {
+			controller.tray.SetTooltip(value)
+		}
 	}
-	controller.start, controller.end = systray.RunWithExternalLoop(
-		controller.onReady,
-		controller.onExit,
-	)
 	service.mu.Lock()
 	service.tray = controller
 	service.mu.Unlock()
 	return controller
 }
 
-// RefreshLanguage reads current settings while serializing native menu updates,
-// so delayed save completions cannot restore an older language.
+func (t *TrayController) SetSystemTray(tray *application.SystemTray) {
+	t.mu.Lock()
+	t.tray = tray
+	t.mu.Unlock()
+}
+
+func (t *TrayController) Start() {
+	t.startOnce.Do(func() {
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		if t.tray == nil {
+			if t.start != nil {
+				t.start()
+			}
+			return
+		}
+		t.rebuildMenuLocked()
+		t.tray.SetIcon(t.icon)
+		t.tray.SetTooltip(textsFor(t.service.Settings().Language).Tray.Tooltip)
+		t.tray.SetMenu(t.menuLocked())
+		t.tray.Run()
+		t.service.MarkTrayReady()
+	})
+}
+
+func (t *TrayController) Stop() {
+	t.stopOnce.Do(func() {
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		if t.end != nil {
+			t.end()
+		}
+		if t.tray != nil {
+			t.tray.Hide()
+		}
+		t.tray = nil
+		t.items = trayMenuItems{}
+	})
+}
+
 func (t *TrayController) RefreshLanguage() {
-	t.menuMu.Lock()
-	defer t.menuMu.Unlock()
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	if t.items.openWindow == nil {
 		return
 	}
@@ -60,8 +101,7 @@ func (t *TrayController) RefreshLanguage() {
 	}{
 		{t.items.openWindow, texts.OpenWindow}, {t.items.latestAlert, texts.LatestAlert},
 		{t.items.removeRoute, texts.RemoveRoute}, {t.items.restoreRoute, texts.RestoreRoute},
-		{t.items.startMonitoring, texts.StartMonitoring}, {t.items.stopMonitoring, texts.StopMonitoring},
-		{t.items.quit, texts.Quit},
+		{t.items.startMonitoring, texts.StartMonitoring}, {t.items.stopMonitoring, texts.StopMonitoring}, {t.items.quit, texts.Quit},
 	} {
 		if entry.item != nil {
 			entry.item.SetTitle(entry.title)
@@ -73,78 +113,29 @@ func (t *TrayController) RefreshLanguage() {
 	}
 }
 
-// Start 启动托盘事件循环。
-func (t *TrayController) Start() {
-	t.startOnce.Do(func() {
-		if t.start != nil {
-			t.start()
-		}
-	})
-}
-
-// Stop 停止托盘事件循环。
-func (t *TrayController) Stop() {
-	t.stopOnce.Do(func() {
-		if t.end != nil {
-			t.end()
-		}
-	})
-}
-
-// onReady 初始化托盘菜单。
-func (t *TrayController) onReady() {
-	if len(t.icon) > 0 {
-		systray.SetIcon(t.icon)
-	}
-	systray.SetTitle(appName)
+func (t *TrayController) rebuildMenuLocked() {
 	texts := textsFor(t.service.Settings().Language).Tray
-	systray.SetTooltip(texts.Tooltip)
-
-	openItem := systray.AddMenuItem(texts.OpenWindow, texts.OpenWindow)
-	lastAlertItem := systray.AddMenuItem(texts.LatestAlert, texts.LatestAlert)
-	systray.AddSeparator()
-	removeItem := systray.AddMenuItem(texts.RemoveRoute, texts.RemoveRoute)
-	restoreItem := systray.AddMenuItem(texts.RestoreRoute, texts.RestoreRoute)
-	systray.AddSeparator()
-	startItem := systray.AddMenuItem(texts.StartMonitoring, texts.StartMonitoring)
-	stopItem := systray.AddMenuItem(texts.StopMonitoring, texts.StopMonitoring)
-	systray.AddSeparator()
-	quitItem := systray.AddMenuItem(texts.Quit, texts.Quit)
-	t.menuMu.Lock()
-	t.items = trayMenuItems{openItem, lastAlertItem, removeItem, restoreItem, startItem, stopItem, quitItem}
-	t.menuMu.Unlock()
-	t.RefreshLanguage()
-	t.service.MarkTrayReady()
-
-	go func() {
-		for {
-			select {
-			case <-openItem.ClickedCh:
-				t.service.ShowWindow()
-			case <-lastAlertItem.ClickedCh:
-				go t.service.ShowLastAlert()
-			case <-removeItem.ClickedCh:
-				_, _ = t.service.RemoveDefaultRoute()
-				t.service.emitState()
-			case <-restoreItem.ClickedCh:
-				_, _ = t.service.RestoreDefaultRoute()
-				t.service.emitState()
-			case <-startItem.ClickedCh:
-				_, _ = t.service.StartMonitoring()
-			case <-stopItem.ClickedCh:
-				_, _ = t.service.StopMonitoring()
-			case <-quitItem.ClickedCh:
-				t.service.QuitApp()
-				return
-			}
-		}
-	}()
+	menu := application.NewMenu()
+	t.menu = menu
+	t.items.openWindow = wailsTrayMenuItem{menu.Add(texts.OpenWindow).OnClick(func(*application.Context) { t.service.ShowWindow() })}
+	t.items.latestAlert = wailsTrayMenuItem{menu.Add(texts.LatestAlert).OnClick(func(*application.Context) { go t.service.ShowLastAlert() })}
+	menu.AddSeparator()
+	t.items.removeRoute = wailsTrayMenuItem{menu.Add(texts.RemoveRoute).OnClick(func(*application.Context) {
+		_, _ = t.service.RemoveDefaultRoute()
+		t.service.EmitState()
+	})}
+	t.items.restoreRoute = wailsTrayMenuItem{menu.Add(texts.RestoreRoute).OnClick(func(*application.Context) {
+		_, _ = t.service.RestoreDefaultRoute()
+		t.service.EmitState()
+	})}
+	menu.AddSeparator()
+	t.items.startMonitoring = wailsTrayMenuItem{menu.Add(texts.StartMonitoring).OnClick(func(*application.Context) { _, _ = t.service.StartMonitoring() })}
+	t.items.stopMonitoring = wailsTrayMenuItem{menu.Add(texts.StopMonitoring).OnClick(func(*application.Context) { _, _ = t.service.StopMonitoring() })}
+	menu.AddSeparator()
+	t.items.quit = wailsTrayMenuItem{menu.Add(texts.Quit).OnClick(func(*application.Context) { t.service.QuitApp() })}
 }
 
-// onExit 处理托盘退出回调。
-func (t *TrayController) onExit() {
-	t.menuMu.Lock()
-	t.items = trayMenuItems{}
-	t.menuMu.Unlock()
-	t.service.writeLog("INFO", "Tray controller exited")
+func (t *TrayController) menuLocked() *application.Menu {
+	// Menus are rebuilt on language changes and cached by the tray controller.
+	return t.menu
 }

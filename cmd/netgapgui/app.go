@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"netgap/internal/guiapp"
-	"runtime"
 )
 
 type App struct {
@@ -26,9 +25,8 @@ func (a *App) ServiceStartup(ctx context.Context, _ application.ServiceOptions) 
 func (a *App) FrontendReady() {
 	a.service.EmitState()
 	a.service.EmitLogs()
-	if runtime.GOOS != "darwin" {
-		a.tray.Start()
-	}
+	a.tray.SetSystemTray(a.runtime.SystemTray.New())
+	a.tray.Start()
 	a.service.MarkFrontendReady()
 }
 

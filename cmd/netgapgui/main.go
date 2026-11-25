@@ -33,9 +33,6 @@ func main() {
 		appIcon = windowsTrayIcon
 	}
 	app := NewApp(service, appIcon)
-	if runtime.GOOS == "darwin" {
-		app.tray.Start()
-	}
 	var singleInstance *application.SingleInstanceOptions
 	if runtime.GOOS == "windows" {
 		singleInstance = &application.SingleInstanceOptions{
@@ -60,7 +57,7 @@ func main() {
 		MinWidth: 600, MinHeight: 800, MaxWidth: 800, MaxHeight: 1200,
 		Frameless: true, Hidden: service.ShouldStartHidden(),
 		BackgroundColour: application.RGBA{Red: 18, Green: 22, Blue: 28, Alpha: 255},
-		Linux: application.LinuxWindow{Icon: appIconPNG},
+		Linux:            application.LinuxWindow{Icon: appIconPNG},
 	})
 	service.SetRuntime(app.runtime, app.window)
 	if err := app.runtime.Run(); err != nil {
