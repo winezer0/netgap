@@ -58,6 +58,7 @@ export function build({ projectDir = defaultProjectDir, args = process.argv.slic
   })
   if (goos === 'darwin') {
     mkdirSync(path.join(projectDir, 'build', 'generated', 'windows'), { recursive: true })
+    mkdirSync(path.join(projectDir, 'build', 'generated', 'darwin'), { recursive: true })
     runBuild('wails3', ['generate', 'icons', '-input', 'build/appicon.png', '-windowsfilename', 'build/generated/windows/icon.ico', '-macfilename', 'build/generated/darwin/icons.icns'])
   }
 
