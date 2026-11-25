@@ -24,10 +24,7 @@ tasks:
       - task: '{{OS}}:dev:build'
   windows:dev:build:
     cmds:
-      - cmd: node -e "require('fs').mkdirSync('build/bin',{recursive:true})"
-      - cmd: go build -ldflags=-H=windowsgui -o "build/bin/netgapgui.exe" .
-        env:
-          CGO_ENABLED: '1'
+      - task: windows:build
   linux:dev:build:
     cmds:
       - cmd: node -e "require('fs').mkdirSync('build/bin',{recursive:true})"
@@ -51,6 +48,8 @@ tasks:
       - build/bin/netgapgui
   windows:build:
     vars:
+      ARCH:
+        sh: go env GOARCH
       OUTPUT: '{{.OUTPUT | default "build/bin/netgapgui.exe"}}'
     cmds:
       - wails3 update build-assets -name netgapgui -binaryname netgapgui -config build/config.yml -dir build/generated -productcompany NetGap -productname NetGapGUI -productidentifier io.netgap.netgapgui -productversion {{.PRODUCT_VERSION | default "0.2.10"}}
