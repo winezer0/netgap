@@ -12,4 +12,6 @@ func Restart(monitoringState func() bool) error {
 
 func Prepare(args []string) (*LaunchIntent, error) { return nil, nil }
 
+func IsRestartChild(args []string) bool { return false }
+
 func ShowLaunchError(err error) {}

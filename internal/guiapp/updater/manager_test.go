@@ -64,8 +64,8 @@ func TestPlatformAssetAndPayloadPatterns(t *testing.T) {
 	}{
 		{goos: "windows", goarch: "amd64", asset: "netgapgui-windows-amd64*.zip", payload: "netgapgui.exe"},
 		{goos: "linux", goarch: "amd64", asset: "netgapgui-linux-amd64*.tar.gz", payload: "netgapgui"},
-		{goos: "darwin", goarch: "amd64", asset: "netgapgui-macos-universal*.zip", payload: "netgapgui.app"},
-		{goos: "darwin", goarch: "arm64", asset: "netgapgui-macos-universal*.zip", payload: "netgapgui.app"},
+		{goos: "darwin", goarch: "arm64", asset: "netgapgui-macos-arm64*.zip", payload: "netgapgui.app"},
+		{goos: "darwin", goarch: "amd64", unsupported: true},
 		{goos: "windows", goarch: "arm64", unsupported: true},
 	}
 	for _, test := range tests {

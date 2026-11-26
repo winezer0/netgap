@@ -5,24 +5,22 @@ import (
 
 	slogs "github.com/winezer0/slogs"
 	"netgap/internal/monitor"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // Health updates bypass State(), which also performs permission checks.
 func (s *Service) emitHealth(health monitor.Health) {
 	s.observeAlertHealth(health)
-	if s.ctx != nil {
-		runtime.EventsEmit(s.ctx, eventHealthName, health)
+	if s.app != nil {
+		s.app.Event.Emit(eventHealthName, health)
 	}
 }
 
 // emitState 向前端推送当前状态。
 func (s *Service) emitState() {
-	if s.ctx == nil {
+	if s.app == nil {
 		return
 	}
-	runtime.EventsEmit(s.ctx, eventStateName, s.State())
+	s.app.Event.Emit(eventStateName, s.State())
 }
 
 // EmitState 主动向前端同步当前状态。
@@ -32,11 +30,11 @@ func (s *Service) EmitState() {
 
 // emitLogs 向前端推送当前日志列表。
 func (s *Service) emitLogs() {
-	if s.ctx == nil {
+	if s.app == nil {
 		return
 	}
 	lines, errorCount := s.logs.Snapshot()
-	runtime.EventsEmit(s.ctx, eventLogName, lines, errorCount)
+	s.app.Event.Emit(eventLogName, lines, errorCount)
 }
 
 // EmitLogs 主动向前端同步当前日志。

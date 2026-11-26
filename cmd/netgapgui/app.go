@@ -2,47 +2,36 @@ package main
 
 import (
 	"context"
-	"runtime"
-
+	"github.com/wailsapp/wails/v3/pkg/application"
 	"netgap/internal/guiapp"
+	"sync"
 )
 
-// App 表示绑定到 Wails 前端的桥接对象。
 type App struct {
-	service *guiapp.Service
-	tray    *guiapp.TrayController
+	service           *guiapp.Service
+	tray              *guiapp.TrayController
+	runtime           *application.App
+	window            *application.WebviewWindow
+	frontendReadyOnce sync.Once
 }
 
-// NewApp 创建 Wails 桥接对象。
 func NewApp(service *guiapp.Service, icon []byte) *App {
-	return &App{
-		service: service,
-		tray:    guiapp.NewTrayController(service, icon),
-	}
+	return &App{service: service, tray: guiapp.NewTrayController(service, icon)}
 }
 
-// Startup 处理应用启动生命周期。
-func (a *App) Startup(ctx context.Context) {
+func (a *App) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
 	a.service.Startup(ctx)
+	return nil
 }
 
-// DomReady 在前端可用后推送初始状态。
-func (a *App) DomReady(ctx context.Context) {
-	a.service.EmitState()
-	a.service.EmitLogs()
-	if runtime.GOOS != "darwin" {
+func (a *App) FrontendReady() {
+	a.frontendReadyOnce.Do(func() {
+		a.service.EmitState()
+		a.service.EmitLogs()
+		a.tray.SetSystemTray(a.runtime.SystemTray.New())
 		a.tray.Start()
-	}
-	a.service.MarkFrontendReady()
+		a.service.MarkFrontendReady()
+	})
 }
 
-// Shutdown 处理应用关闭生命周期。
-func (a *App) Shutdown(ctx context.Context) {
-	a.tray.Stop()
-	a.service.Shutdown()
-}
-
-// BeforeClose 允许窗口正常关闭。
-func (a *App) BeforeClose(ctx context.Context) bool {
-	return false
-}
+func (a *App) Shutdown() { a.tray.Stop(); a.service.Shutdown() }

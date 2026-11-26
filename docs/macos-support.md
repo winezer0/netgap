@@ -42,7 +42,7 @@ CGO_ENABLED=1 node build.mjs -platform darwin/universal
 open build/bin/netgapgui.app
 ```
 
-发布工作流包含 macOS 通用 GUI，并增加原生后端与 CLI 编译步骤。签名、公证和分发设置见项目发行配置。
+发布工作流仅发布 macOS arm64 GUI，并增加原生后端与 CLI 编译步骤。macOS Intel 不提供发行包或自动更新。签名、公证和分发设置见项目发行配置。
 
 另有独立 [Native Build 工作流](../.github/workflows/native-build.yml)，在 Intel 和 Apple Silicon runner 分别以 CGO 编译原生后端、CLI 和对应架构 GUI；验收步骤通过手动触发运行，不发布产物。当前场景状态见[已验证场景记录](已验证场景记录.md)和[剩余未验证场景记录](剩余未验证场景记录.md)。
 

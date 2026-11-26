@@ -1,0 +1,31 @@
+version: '3'
+info:
+  companyName: NetGap
+  productName: NetGapGUI
+  productIdentifier: io.netgap.netgapgui
+  description: IP Checker GUI Application
+  copyright: Copyright 2026
+  comments: NetGapGUI desktop application
+  version: 0.2.10
+dev_mode:
+  root_path: .
+  log_level: info
+  ignore:
+    dir:
+      - .git
+      - frontend/node_modules
+      - frontend/dist
+      - build/bin
+      - build/generated
+    watched_extension:
+      - "*.go"
+    git_ignore: true
+  executes:
+    - cmd: wails3 task dev:install
+      type: once
+    - cmd: wails3 task dev:frontend
+      type: background
+    - cmd: wails3 task dev:build
+      type: blocking
+    - cmd: wails3 task run
+      type: primary

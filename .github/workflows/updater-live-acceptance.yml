@@ -25,7 +25,7 @@ jobs:
             id: linux-amd64
             test_tags: acceptance,dezip_full
           - os: macos-latest
-            id: macos-universal
+            id: macos-arm64
     defaults:
       run:
         shell: bash

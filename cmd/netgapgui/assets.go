@@ -7,7 +7,7 @@ import "embed"
 //go:embed all:frontend/dist
 var frontendDist embed.FS
 
-// trayIcon stores the application icon used by the system tray.
+// appIconPNG stores the cross-platform application icon and Linux/macOS tray icon.
 //
-//go:embed build/icon.ico
-var trayIcon []byte
+//go:embed build/appicon.png
+var appIconPNG []byte
