@@ -10,8 +10,6 @@ NetGap 用于检查代理出口 IP 是否仍处于预期网络区域。
 ## 免责声明
 继续阅读文章或使用工具视为您已同意 [NOVASEC免责声明](https://mp.weixin.qq.com/s/iRWRVxkYu7Fx5unxA34I7g)
 
-<img width="600" height="800" alt="image" src="https://github.com/user-attachments/assets/dcb0e156-7d68-4c62-b634-7cdc7634df21" />
-
 ## 程序说明
 
 - [命令行版（`cmd/netgap`）](cmd/netgap/README.md)：按设定间隔查询代理出口 IP，匹配目标区域，并可选择在检测到目标区域时移除默认路由。
@@ -26,6 +24,10 @@ NetGap 用于检查代理出口 IP 是否仍处于预期网络区域。
 提示: 可在可执行文件旁的 `assets` 目录提供自定义数据库；未提供时使用程序内置数据库。
 
 提示：部分公网ip查询接口是国内的 部分是国外的，规则切换模式下不同的api地址在路由选择时可能是不一样的出口IP。
+
+## GUI界面图示
+<img width="600" height="800" alt="image" src="https://github.com/user-attachments/assets/dcb0e156-7d68-4c62-b634-7cdc7634df21" />
+
 
 ## 支持的 IP 查询 API
 
