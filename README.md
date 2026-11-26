@@ -1,5 +1,7 @@
 # NetGap
 
+[简体中文](README.md) | [English](README.en.md)
+
 NetGap 用于检查代理出口 IP 是否仍处于预期网络区域。
 
 项目提供命令行版和图形界面版：命令行版适合脚本和终端操作，图形界面版提供可视化配置、状态和日志。
@@ -59,13 +61,13 @@ IP 查询、区域匹配、日志查看等监控功能通常无需管理员权�
 
 ## 支持的操作系统
 
-当前代码针对 **Windows、Linux 和 macOS** 提供平台后端，验证状态如下：
+当前代码针对 **Windows、Linux 和 macOS** 提供平台后端。Release 制品支持 Windows amd64、Linux amd64 和 macOS arm64；平台行为和验收状态如下：
 
 | 系统 | 当前支持情况 | 平台相关行为 |
 | --- | --- | --- |
 | Windows | 支持命令行版和图形界面版 | 从 Windows 系统配置逐网址应用固定代理/PAC/WPAD；完整路由操作使用本机原生 CIM/MI 接口，运行验收待完成。 |
 | Linux | 支持 Ubuntu 22.04/24.04 amd64 CLI 和 GUI | GNOME/KDE 无代理、固定 HTTP/HTTPS/SOCKS 与绕过规则；不执行 PAC/WPAD，识别到自动模式后直接查询系统路由出口，仅告警并暂停自动断网。无桌面时使用环境代理，不再携带独立代理助手。完整路由操作使用原生 Netlink。 |
-| macOS | 支持 Intel/Apple Silicon CLI 和 GUI | CFNetwork 按网址解析系统固定代理/PAC/WPAD；原生路由套接字处理双栈、全网卡及接口作用域默认路由。需 CGO，详见 [macOS 功能支持](docs/macos-support.md)。 |
+| macOS | 源码支持 Intel/Apple Silicon CLI 和 GUI；Release 仅提供 arm64 | CFNetwork 按网址解析系统固定代理/PAC/WPAD；原生路由套接字处理双栈、全网卡及接口作用域默认路由。需 CGO，详见 [macOS 功能支持](docs/macos-support.md)。 |
 | 其他系统 | 未列为当前支持平台 | 完整默认路由保护在启用前明确拒绝。 |
 
 Linux/macOS 图形界面的构建需要满足 Wails 对应平台的构建依赖。macOS 原生后端需要 Apple SDK 和 `CGO_ENABLED=1`；纯 Go 交叉编译不能替代原生功能验证。
@@ -101,7 +103,7 @@ Linux/macOS 图形界面的构建需要满足 Wails 对应平台的构建依赖�
 
 ## 环境要求
 
-- Go 版本：以 [go.mod](go.mod) 声明的版本为准（当前为 Go 1.25.5）。
+- Go 版本：以 [go.mod](go.mod) 声明的版本为准（当前为 Go 1.26.0）。
 - IP 查询需要网络连接，并依赖所启用的外部 API 可访问。
 - 修改默认路由需要管理员权限；移除默认路由会中断网络连接。
 
@@ -115,5 +117,9 @@ cd cmd/netgapgui && node build.mjs
 ```
 
 Linux 发行构建需加 `dezip_full` tag（Ubuntu 24.04 GUI 还需 `webkit2_41`），因为 Linux 自更新包为 `.tar.gz`；Windows/macOS 更新包为 ZIP。
+
+## 下载
+
+从 [GitHub Releases](https://github.com/winezer0/netgap/releases) 获取预构建程序。当前发布目标为 Windows amd64、Linux amd64 和 macOS arm64。Linux 与 macOS GUI 依赖对应平台的 GTK/WebKit 或 Apple 原生构建环境。
 
 具体运行方式和参数见各程序的独立 README。
